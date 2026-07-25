@@ -1469,8 +1469,8 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    A["P2 arranca · [2]"] --> B["P3 · [2,3]"]
-    B --> C["P5 · [2,3,5]"]
+    A["P2 arranca · (2)"] --> B["P3 agrega · (2,3)"]
+    B --> C["P5 agrega · (2,3,5)"]
     C --> D["vuelve a P2"]
     D -->|"mayor de la lista = 5"| E["P5 = COORDINATOR"]
             
