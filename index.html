@@ -1018,6 +1018,10 @@
       <a href="#ambientes"><span>17</span>Ambientes distribuidos</a>
       <a href="#redes"><span>18</span>Redes y modelo OSI</a>
     </nav>
+    <div class="nav-title">Herramientas</div>
+    <nav class="toc" aria-label="Herramientas">
+      <a href="#testing"><span>19</span>Testing de concurrencia</a>
+    </nav>
     <div class="nav-title">Anexos</div>
     <nav class="toc" aria-label="Anexos">
       <a href="#finales"><span>A</span>Finales resueltos</a>
@@ -1408,14 +1412,34 @@ let total: u64 = (0..1_000_000u64)
     .into_par_iter()
     .map(|x| x * x)
     .reduce(|| 0, |a, b| a + b);   // reduce combina resultados parciales</code></pre>
+        <p>Dos utilidades más que usa la cátedra: <code>par_bridge()</code> convierte cualquier iterador secuencial en paralelo (cuando no hay un <code>par_iter</code> directo), y <code>std::thread::available_parallelism()</code> devuelve cuántos hilos paralelos ofrece el hardware, para dimensionar el pool. El «Hello World» práctico de fork-join es el <strong>Merge Sort concurrente</strong>: partir el vector, ordenar cada mitad en paralelo y mergear.</p>
 
         <h3>MapReduce, Dremel y vectorización</h3>
         <ul class="study-list">
           <li><strong>MapReduce</strong> (Google, 2004): modelo para procesar grandes datasets. El usuario define <strong>map</strong> (procesa un par clave/valor y emite pares intermedios) y <strong>reduce</strong> (combina todos los valores de una misma clave). Su «Hello World» es el <strong>conteo de palabras (Word Count)</strong>.</li>
           <li><strong>Dremel</strong>: consultas en tiempo casi real (expuesto como <em>BigQuery</em>); la consulta se «empuja» y reescribe por un árbol jerárquico y los resultados se ensamblan agregando las respuestas de los niveles inferiores.</li>
           <li><strong>Vectorización (SIMD, <em>Single Instruction, Multiple Data</em>)</strong>: aplicar el mismo cómputo simple a muchos datos independientes a la vez. Ante la ralentización de la <strong>Ley de Moore</strong>, los transistores extra se usaron en varias ALUs sobre los mismos registros → instrucciones SIMD (MMX/SSE/AVX en x86, NEON en ARM). Los registros son vectores de tamaño fijo (128–512 bits) divididos en <strong>carriles (lanes)</strong>. Operaciones «verticales» (entre registros, mismo carril: <code>x0+y0</code>) son eficientes; las «horizontales» (reducir un vector a un escalar: <code>x0+x1+x2+x3</code>) son más lentas. Ideal para sonido, imágenes, video y entrenar redes neuronales.</li>
-          <li><strong>CUDA</strong>: estándar de facto de NVIDIA para GPUs; modela «threads» en bloques que operan sobre porciones de memoria independientes (direccionables en 1D/2D/3D), permitiendo miles de threads concurrentes.</li>
+          <li><strong>CUDA</strong>: estándar de facto de NVIDIA para GPUs; modela «threads» en bloques que operan sobre porciones de memoria independientes (direccionables en 1D/2D/3D), permitiendo miles de threads concurrentes. En GPU la ejecución se agenda en <strong>warps</strong> de 32 hilos (SIMT): todos ejecutan la misma instrucción, y un salto condicional divergente obliga a serializar las dos ramas.</li>
         </ul>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    RD["read_dir"] --> F1["flat_map lines · file 1"]
+    RD --> F2["flat_map lines · file 2"]
+    F1 --> M1["map word_counts · línea 1"]
+    F1 --> M2["map word_counts · línea 2"]
+    F2 --> M3["map word_counts · línea 1"]
+    F2 --> M4["map word_counts · línea 2"]
+    M1 --> R1["reduce"]
+    M2 --> R1
+    M3 --> R2["reduce"]
+    M4 --> R2
+    R1 --> RF["reduce final"]
+    R2 --> RF
+          </div>
+          <figcaption>Word Count como <strong>DAG</strong> (el «Hello World» de MapReduce, con Rayon): <code>read_dir → flat_map(lines) → map(contar) → reduce</code> en árbol. El <em>map</em> procesa cada línea en paralelo; el <em>reduce</em> combina los conteos parciales de a pares hasta el resultado final.</figcaption>
+        </figure>
 
         <p class="exam-answer"><strong>En el final:</strong> propiedades de fork-join (determinístico, sin races, aislado), qué es work stealing (deque, robar del inicio de otra cola) y por qué SIMD/GPU sirven para «mismo cómputo sobre muchos datos independientes» y no para lógica con estado compartido.</p>
       </section>
@@ -1462,6 +1486,21 @@ async fn combinar() -&gt; usize {
     let (a, b) = futures::join!(bajar("api/1"), bajar("api/2"));
     a.len() + b.len()
 }</code></pre>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    U["Usuario"] --> RQ["Request"]
+    RQ --> DB[("DB")]
+    DB --> S1["Servicio 1"]
+    DB --> S2["Servicio 2"]
+    DB --> SN["Servicio N"]
+    S1 --> RS["Response"]
+    S2 --> RS
+    SN --> RS
+          </div>
+          <figcaption>Caso real de async: un request consulta la DB y dispara N llamadas a servicios externos <strong>concurrentemente</strong> (fan-out con <code>join</code>). Mientras cada una espera su I/O, el mismo hilo atiende las otras; la <code>Response</code> se arma cuando todas resolvieron. Con threads bloqueantes esto costaría N stacks; con async, N tareas livianas.</figcaption>
+        </figure>
 
         <h3>Executors y runtimes</h3>
         <div class="table-wrap">
@@ -1883,6 +1922,17 @@ flowchart LR
           <figcaption>Cada filósofo comparte un palillo con cada vecino. Soluciones al deadlock: (a) <strong>ordenar</strong> los recursos y tomar siempre primero el de menor índice; (b) que un filósofo tome en orden inverso; (c) permitir a lo sumo <code>N-1</code> sentados a la mesa; (d) un mozo/mutex que dé permiso para agarrar de a pares.</figcaption>
         </figure>
 
+        <h4>Solución distribuida de Chandy-Misra</h4>
+        <p>Versión por <strong>pasaje de mensajes</strong> (sin memoria compartida), <strong>libre de deadlock</strong>, que se implementa naturalmente con <a href="#mensajes">actores</a>. Reglas:</p>
+        <ul class="study-list">
+          <li>Por cada par de filósofos que compiten por un palito se crea <strong>un palito</strong>, asignado al inicio al filósofo de <strong>ID más bajo</strong> (rompe la simetría → evita la espera circular).</li>
+          <li>Cada palito está <strong>sucio</strong> o <strong>limpio</strong>; inicialmente todos están sucios.</li>
+          <li>Para comer, el filósofo pide por mensaje a sus vecinos los palitos que le faltan.</li>
+          <li>Al recibir un pedido: si su palito está <strong>limpio</strong>, lo <strong>conserva</strong> (el vecino espera); si está <strong>sucio</strong>, lo <strong>limpia y lo entrega</strong>.</li>
+          <li>Después de comer, todos sus palitos quedan <strong>sucios</strong>; si alguien los había pedido, los limpia y los manda.</li>
+        </ul>
+        <div class="callout blue">La combinación «el de menor ID arranca con el palito» + «sucio se cede, limpio se retiene» garantiza <strong>no deadlock</strong> (no hay espera circular) y <strong>no starvation</strong> (un palito sucio siempre termina cediéndose). Es la solución distribuida clásica y la que se pide implementar con actores.</div>
+
         <h3>Los fumadores (Patil)</h3>
         <p>Tres fumadores, cada uno con un ingrediente infinito distinto (<strong>tabaco</strong>, <strong>papel</strong>, <strong>fósforos</strong>). Un <em>agente</em> pone dos ingredientes aleatorios en la mesa; el fumador que tiene el <strong>tercero</strong> los toma, arma el cigarrillo y fuma. Ejercita despertar selectivamente al proceso correcto según la combinación disponible.</p>
 
@@ -1918,6 +1968,21 @@ flowchart LR
         <div class="callout"><strong>Regla de disparo (ordinaria):</strong> una transición está <strong>habilitada</strong> si <em>todos</em> sus lugares de entrada tienen al menos un token. Al <strong>dispararse (fire)</strong>, consume un token de cada lugar de entrada y produce un token en cada lugar de salida. El <strong>grafo de alcance</strong> representa todos los estados (marcas) alcanzables y las transiciones entre ellos.</div>
         <p><strong>Interpretaciones:</strong> los lugares pueden ser precondiciones, datos, señales o buffers de entrada; las transiciones, eventos, cómputos o procesamiento de señales; los lugares de salida, postcondiciones, datos/señales/buffers de salida.</p>
 
+        <h3>Grafo de alcance (cómo se analiza una red)</h3>
+        <p>El <strong>grafo de alcance</strong> enumera todas las marcas (estados) alcanzables desde <code>M0</code> y las transiciones entre ellas. Es <em>la</em> herramienta para verificar propiedades: si una marca «mala» nunca aparece, la red es <strong>segura</strong>; si desde toda marca se puede seguir disparando, no hay <strong>deadlock</strong>. Ejemplo con una red fork-join —<code>t1</code> bifurca <code>p1</code> en <code>p2,p3</code>; <code>t2: p2→p4</code>; <code>t3: p3→p5</code>; <code>t4</code> sincroniza <code>p4,p5→p1</code>— con marcas <code>(p1,p2,p3,p4,p5)</code>:</p>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart TB
+    M0(("M0 = (1,0,0,0,0)")) -->|t1| M1(("M1 = (0,1,1,0,0)"))
+    M1 -->|t2| M2(("M2 = (0,0,1,1,0)"))
+    M1 -->|t3| M3(("M3 = (0,1,0,0,1)"))
+    M2 -->|t3| M4(("M4 = (0,0,0,1,1)"))
+    M3 -->|t2| M4
+    M4 -->|t4| M0
+          </div>
+          <figcaption>El «rombo» <code>M1 → M2/M3 → M4</code> muestra la <strong>concurrencia</strong>: <code>t2</code> y <code>t3</code> son independientes y pueden dispararse en cualquier orden, llegando a la misma marca <code>M4</code> (esto es el interleaving del §1 hecho gráfico). El ciclo de vuelta a <code>M0</code> por <code>t4</code> (el join) muestra que la red es <strong>viva</strong> y <strong>acotada</strong>.</figcaption>
+        </figure>
+
         <h3>Red General de Petri</h3>
         <p>Se define como <code>PN = (T, P, A, W, M0)</code>, agregando:</p>
         <ul class="study-list">
@@ -1948,23 +2013,24 @@ flowchart LR
         </figure>
 
         <h3>Ejemplo 2 — Productor-Consumidor con buffer acotado</h3>
+        <p>Con la <strong>notación de la cátedra</strong> (la que aparece en parciales): lugares <code>p1..p6</code>, transiciones <code>t1..t4</code>.</p>
         <figure class="diagram">
           <div class="mermaid">
 flowchart LR
-    PL(("Productor listo")) --> tp["producir"]
-    tp --> PP(("item en mano"))
-    PP --> dep["depositar"]
-    LIB(("Libres (N)")) --> dep
-    dep --> PL
-    dep --> OCU(("Ocupados (0)"))
-    OCU --> ret["retirar"]
-    ret --> LIB
-    ret --> CC(("Consumidor con item"))
-    CC --> tc["consumir"]
-    tc --> CL(("Consumidor listo"))
-    CL --> ret
+    p1(("p1 · productor listo")) --> t1["t1"]
+    P6(("p6 = N · libres")) --> t1
+    t1 --> p2(("p2 · produciendo"))
+    p2 --> t2["t2"]
+    t2 --> p1
+    t2 --> p5(("p5 · items"))
+    p5 --> t3["t3"]
+    p3(("p3 · consumidor listo")) --> t3
+    t3 --> p4(("p4 · consumiendo"))
+    t3 --> P6
+    p4 --> t4["t4"]
+    t4 --> p3
           </div>
-          <figcaption><code>Libres</code> arranca con <code>N</code> tokens (huecos) y <code>Ocupados</code> con 0. <strong>Depositar</strong> requiere un hueco libre (consume de <code>Libres</code>, produce en <code>Ocupados</code>); <strong>retirar</strong> requiere un ítem (consume de <code>Ocupados</code>, produce en <code>Libres</code>). Invariante <code>Libres + Ocupados = N</code>: nunca se sobrepasa la capacidad. Son exactamente los semáforos <code>notFull</code> (Libres) y <code>notEmpty</code> (Ocupados).</figcaption>
+          <figcaption>Productor: <code>p1 → t1 → p2 → t2 → p1</code>; consumidor: <code>p3 → t3 → p4 → t4 → p3</code>. El buffer son dos lugares: <code>p5</code> = ítems disponibles (semáforo <code>notEmpty</code>) y <code>p6</code> = huecos libres, inicializado en <code>N</code> (semáforo <code>notFull</code>). <code>t1</code> solo dispara si hay un hueco (consume de <code>p6</code>); <code>t3</code> devuelve el hueco (produce en <code>p6</code>). Para el <strong>buffer infinito</strong> se quita <code>p6</code>: solo hace falta <code>p5</code> (<code>notEmpty</code>). Invariante <code>p5 + p6 + p2 = N</code>: nunca se sobrepasa la capacidad.</figcaption>
         </figure>
 
         <h3>Ejemplo 3 — Reserva de asientos de un estadio (final 16/07/2026)</h3>
@@ -2059,6 +2125,13 @@ sequenceDiagram
 
         <div class="callout warning"><strong>Elegir según la carga (pregunta de final):</strong> con <strong>alta contención</strong> (mucha escritura sobre los mismos datos, p. ej. venta de tickets en hora pico donde hay que evitar sobreventa), <strong>optimista es mala idea</strong> (aborta y rehace constantemente) → conviene <strong>2PL/pessimista</strong> o timestamps, que serializan el acceso. Con <strong>baja contención</strong> y mayoría de lecturas, <strong>optimista</strong> gana (sin overhead de locks, más paralelismo).</div>
 
+        <h3>Más allá del 2PC: pesimista vs optimista, 3PC y Sagas</h3>
+        <ul class="study-list">
+          <li><strong>Bloqueo pesimista vs optimista + granularidad:</strong> el pesimista (2PL) toma locks por adelantado (seguro, pero con contención y riesgo de deadlock); el optimista no toma locks y valida al commit (más paralelismo, pero rehace bajo conflicto). La <strong>granularidad</strong> del lock (fila vs tabla vs archivo) equilibra concurrencia y overhead.</li>
+          <li><strong>Commit en tres fases (3PC):</strong> agrega una fase intermedia («pre-commit») al 2PC para que <em>no</em> sea bloqueante: si el coordinador cae, los participantes pueden decidir por <em>timeout</em> sin quedar colgados. A cambio, más mensajes y latencia.</li>
+          <li><strong>Sagas:</strong> para transacciones <em>largas</em> que tocan muchos servicios, en vez de un lock global se ejecuta una secuencia de pasos, cada uno con su <strong>acción compensatoria</strong> (undo). Si un paso falla, se corren las compensaciones de los pasos previos. Sacrifica aislamiento estricto por disponibilidad (típico en microservicios).</li>
+        </ul>
+
         <p class="exam-answer"><strong>En el final:</strong> «explicar 2PC (ventajas/desventajas)» y «en qué casos usarías concurrencia optimista». Para el escenario de <em>compra de tickets / sobreventa</em>: describir 2PL, timestamps y optimista con pros y contras, y concluir que con la alta concurrencia de escritura de la hora pico conviene un esquema <strong>pesimista (2PL / timestamps)</strong> para prevenir compras duplicadas, dejando lo optimista para la parte de solo-lectura (mostrar disponibilidad).</p>
       </section>
 
@@ -2127,6 +2200,35 @@ flowchart LR
           <li><strong>Bully:</strong> el proceso <code>P</code> que detecta la caída del coordinador manda <code>ELECTION</code> a todos los de <strong>ID mayor</strong>. Si nadie responde, <code>P</code> gana y anuncia <code>COORDINATOR</code>. Si responde alguien mayor (<code>OK</code>), <code>P</code> se retira y ese sigue la elección. Contras: en sistemas grandes genera muchos mensajes; un proceso de ID alto que falla puede reiniciar la elección repetidamente.</li>
           <li><strong>Ring:</strong> el que nota la caída crea un mensaje <code>ELECTION</code> con su ID y lo pasa a su sucesor; cada uno <strong>agrega su ID</strong> y reenvía. Cuando el mensaje completa la vuelta, el de <strong>mayor ID de la lista</strong> es el nuevo coordinador (se anuncia con <code>COORDINATOR</code>). Contras: latencia lineal con el número de procesos; requiere el anillo operativo.</li>
         </ul>
+        <div class="cmp two">
+          <figure class="diagram">
+            <div class="mermaid">
+sequenceDiagram
+    participant P4
+    participant P5
+    participant P6
+    Note over P4: nota que P7 (coord.) cayó
+    P4->>P5: ELECTION
+    P4->>P6: ELECTION
+    P5-->>P4: OK
+    P6-->>P4: OK
+    Note over P6: nadie mayor responde
+    P6->>P4: COORDINATOR
+    P6->>P5: COORDINATOR
+            </div>
+            <figcaption><strong>Bully:</strong> cada proceso desafía a los de ID mayor; el mayor vivo (P6) gana y se anuncia.</figcaption>
+          </figure>
+          <figure class="diagram">
+            <div class="mermaid">
+flowchart LR
+    A["P2 arranca · [2]"] --> B["P3 · [2,3]"]
+    B --> C["P5 · [2,3,5]"]
+    C --> D["vuelve a P2"]
+    D -->|"mayor de la lista = 5"| E["P5 = COORDINATOR"]
+            </div>
+            <figcaption><strong>Ring:</strong> el mensaje circula acumulando IDs; al volver, gana el mayor de la lista.</figcaption>
+          </figure>
+        </div>
 
         <p class="exam-answer"><strong>En el final:</strong> comparar los tres algoritmos de exclusión mutua (centralizado = simple pero SPOF; Ricart-Agrawala = sin coordinador pero N² mensajes; token ring = justo pero con latencia) y saber que Bully y Ring siempre eligen al de mayor ID.</p>
       </section>
@@ -2267,6 +2369,52 @@ fn cliente() -&gt; std::io::Result&lt;()&gt; {
           <li><strong>OSI:</strong> estándar de 7 capas que define interfaces y protocolos en cada nivel. <strong>TCP/IP</strong> es la pila real (IP, TCP, UDP y protocolos de aplicación como HTTP, FTP).</li>
         </ul>
         <p class="exam-answer"><strong>En el final:</strong> suele venir como apoyo de sockets. Recordar: TCP = con conexión, confiable, control de flujo/errores; UDP = sin conexión, sin garantías; y que cada capa da un <em>servicio</em> a la de arriba y habla un <em>protocolo</em> con su par.</p>
+      </section>
+
+<section class="chapter" id="testing" data-title="testing pruebas rust cfg test modulo mockall automock mock inyeccion de dependencias solid loom permutaciones interleaving race condition deadlock given when then actores panic timeout cargo test">
+        <div class="chapter-head">
+          <div class="chapter-number">19</div>
+          <div><h2>Testing de programas concurrentes</h2></div>
+        </div>
+
+        <p>Probar código concurrente es difícil porque los bugs (races, deadlocks) dependen del <em>interleaving</em> y no aparecen en todas las corridas: un test puede pasar mil veces y fallar la vez 1001. La materia cierra con herramientas pensadas justamente para eso.</p>
+
+        <h3>Testing en Rust</h3>
+        <ul class="study-list">
+          <li>Los tests viven en el <strong>mismo módulo</strong> que el código, en un submódulo anotado con <code>#[cfg(test)]</code> (se compila <em>solo</em> al correr <code>cargo test</code>) y funciones marcadas con <code>#[test]</code>.</li>
+          <li>Los tests corren <strong>concurrentemente</strong> entre sí por defecto.</li>
+          <li><strong>Diseño testeable:</strong> aplicar <strong>SOLID</strong> e <strong>inyección de dependencias</strong> para poder reemplazar los efectos secundarios (red, reloj, azar) por dobles controlados.</li>
+        </ul>
+
+        <h3>Mocking con <code>mockall</code></h3>
+        <p>Rust no trae mocking nativo. El crate <strong><code>mockall</code></strong> genera mocks automáticos de un trait con <code>#[automock]</code>; en el test se definen las <strong>expectativas</strong> (qué métodos se llaman, con qué argumentos y qué devuelven).</p>
+        <pre class="code" data-lang="rust"><code>use mockall::automock;
+
+#[automock]
+trait Moneda { fn tirar(&amp;self) -&gt; bool; }        // dependencia a mockear
+
+fn jugar(m: &amp;dyn Moneda) -&gt; &amp;str {
+    if m.tirar() { "cara" } else { "cruz" }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn gana_si_sale_cara() {
+        let mut mock = MockMoneda::new();
+        mock.expect_tirar().returning(|| true);  // controlo el azar (given)
+        assert_eq!(jugar(&amp;mock), "cara");         // when / then
+    }
+}</code></pre>
+
+        <h3>Loom: explorar todos los entrelazados</h3>
+        <div class="callout"><strong>Loom</strong> es una herramienta para testear código concurrente: corre el test <strong>muchas veces permutando sistemáticamente los entrelazados posibles</strong> de los threads (y las reordenaciones de memoria permitidas), de modo que dispara <strong>condiciones de carrera y deadlocks</strong> que una corrida normal casi nunca revela. Se usa reemplazando los tipos de sincronización por los de <code>loom::sync</code> (Mutex, Arc, atomics) y no exige grandes refactors. Es lo más cercano a «probar <em>todos</em> los escenarios del §1» de forma automática.</div>
+
+        <h3>Testear actores</h3>
+        <p>Para actores se combina el <strong>mocking</strong> de actores con el patrón <strong>given-when-then</strong> (dado un estado, cuando llega un mensaje, entonces se espera cierto resultado), probando el manejo asincrónico. El reto que queda abierto es <strong>capturar los panics</strong> dentro de un actor y manejar <strong>timeouts</strong> para que el test no quede colgado.</p>
+
+        <p class="exam-answer"><strong>Para el final/TP:</strong> saber que <code>#[cfg(test)]</code> compila los tests solo en modo test, que se mockea con <code>mockall</code> gracias a la inyección de dependencias, y sobre todo que <strong>Loom</strong> valida la corrección concurrente explorando los interleavings —lo que a mano es inviable—.</p>
       </section>
 
 <section class="chapter" id="finales" data-title="finales resueltos examen final metodo plantilla como resolver 16 julio 2026 09 julio 2026 diseño de sistema venta online sobreventa transaccionalidad secuencia pseudocodigo actores">

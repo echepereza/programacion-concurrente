@@ -103,14 +103,34 @@ let total: u64 = (0..1_000_000u64)
     .into_par_iter()
     .map(|x| x * x)
     .reduce(|| 0, |a, b| a + b);   // reduce combina resultados parciales</pre>
+        <p>Dos utilidades más que usa la cátedra: <code>par_bridge()</code> convierte cualquier iterador secuencial en paralelo (cuando no hay un <code>par_iter</code> directo), y <code>std::thread::available_parallelism()</code> devuelve cuántos hilos paralelos ofrece el hardware, para dimensionar el pool. El «Hello World» práctico de fork-join es el <strong>Merge Sort concurrente</strong>: partir el vector, ordenar cada mitad en paralelo y mergear.</p>
 
         <h3>MapReduce, Dremel y vectorización</h3>
         <ul class="study-list">
           <li><strong>MapReduce</strong> (Google, 2004): modelo para procesar grandes datasets. El usuario define <strong>map</strong> (procesa un par clave/valor y emite pares intermedios) y <strong>reduce</strong> (combina todos los valores de una misma clave). Su «Hello World» es el <strong>conteo de palabras (Word Count)</strong>.</li>
           <li><strong>Dremel</strong>: consultas en tiempo casi real (expuesto como <em>BigQuery</em>); la consulta se «empuja» y reescribe por un árbol jerárquico y los resultados se ensamblan agregando las respuestas de los niveles inferiores.</li>
           <li><strong>Vectorización (SIMD, <em>Single Instruction, Multiple Data</em>)</strong>: aplicar el mismo cómputo simple a muchos datos independientes a la vez. Ante la ralentización de la <strong>Ley de Moore</strong>, los transistores extra se usaron en varias ALUs sobre los mismos registros → instrucciones SIMD (MMX/SSE/AVX en x86, NEON en ARM). Los registros son vectores de tamaño fijo (128–512 bits) divididos en <strong>carriles (lanes)</strong>. Operaciones «verticales» (entre registros, mismo carril: <code>x0+y0</code>) son eficientes; las «horizontales» (reducir un vector a un escalar: <code>x0+x1+x2+x3</code>) son más lentas. Ideal para sonido, imágenes, video y entrenar redes neuronales.</li>
-          <li><strong>CUDA</strong>: estándar de facto de NVIDIA para GPUs; modela «threads» en bloques que operan sobre porciones de memoria independientes (direccionables en 1D/2D/3D), permitiendo miles de threads concurrentes.</li>
+          <li><strong>CUDA</strong>: estándar de facto de NVIDIA para GPUs; modela «threads» en bloques que operan sobre porciones de memoria independientes (direccionables en 1D/2D/3D), permitiendo miles de threads concurrentes. En GPU la ejecución se agenda en <strong>warps</strong> de 32 hilos (SIMT): todos ejecutan la misma instrucción, y un salto condicional divergente obliga a serializar las dos ramas.</li>
         </ul>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    RD["read_dir"] --> F1["flat_map lines · file 1"]
+    RD --> F2["flat_map lines · file 2"]
+    F1 --> M1["map word_counts · línea 1"]
+    F1 --> M2["map word_counts · línea 2"]
+    F2 --> M3["map word_counts · línea 1"]
+    F2 --> M4["map word_counts · línea 2"]
+    M1 --> R1["reduce"]
+    M2 --> R1
+    M3 --> R2["reduce"]
+    M4 --> R2
+    R1 --> RF["reduce final"]
+    R2 --> RF
+          </div>
+          <figcaption>Word Count como <strong>DAG</strong> (el «Hello World» de MapReduce, con Rayon): <code>read_dir → flat_map(lines) → map(contar) → reduce</code> en árbol. El <em>map</em> procesa cada línea en paralelo; el <em>reduce</em> combina los conteos parciales de a pares hasta el resultado final.</figcaption>
+        </figure>
 
         <p class="exam-answer"><strong>En el final:</strong> propiedades de fork-join (determinístico, sin races, aislado), qué es work stealing (deque, robar del inicio de otra cola) y por qué SIMD/GPU sirven para «mismo cómputo sobre muchos datos independientes» y no para lógica con estado compartido.</p>
       </section>
@@ -157,6 +177,21 @@ async fn combinar() -> usize {
     let (a, b) = futures::join!(bajar("api/1"), bajar("api/2"));
     a.len() + b.len()
 }</pre>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    U["Usuario"] --> RQ["Request"]
+    RQ --> DB[("DB")]
+    DB --> S1["Servicio 1"]
+    DB --> S2["Servicio 2"]
+    DB --> SN["Servicio N"]
+    S1 --> RS["Response"]
+    S2 --> RS
+    SN --> RS
+          </div>
+          <figcaption>Caso real de async: un request consulta la DB y dispara N llamadas a servicios externos <strong>concurrentemente</strong> (fan-out con <code>join</code>). Mientras cada una espera su I/O, el mismo hilo atiende las otras; la <code>Response</code> se arma cuando todas resolvieron. Con threads bloqueantes esto costaría N stacks; con async, N tareas livianas.</figcaption>
+        </figure>
 
         <h3>Executors y runtimes</h3>
         <div class="table-wrap">

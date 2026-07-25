@@ -1,0 +1,45 @@
+      <section class="chapter" id="testing" data-title="testing pruebas rust cfg test modulo mockall automock mock inyeccion de dependencias solid loom permutaciones interleaving race condition deadlock given when then actores panic timeout cargo test">
+        <div class="chapter-head">
+          <div class="chapter-number">19</div>
+          <div><h2>Testing de programas concurrentes</h2></div>
+        </div>
+
+        <p>Probar código concurrente es difícil porque los bugs (races, deadlocks) dependen del <em>interleaving</em> y no aparecen en todas las corridas: un test puede pasar mil veces y fallar la vez 1001. La materia cierra con herramientas pensadas justamente para eso.</p>
+
+        <h3>Testing en Rust</h3>
+        <ul class="study-list">
+          <li>Los tests viven en el <strong>mismo módulo</strong> que el código, en un submódulo anotado con <code>#[cfg(test)]</code> (se compila <em>solo</em> al correr <code>cargo test</code>) y funciones marcadas con <code>#[test]</code>.</li>
+          <li>Los tests corren <strong>concurrentemente</strong> entre sí por defecto.</li>
+          <li><strong>Diseño testeable:</strong> aplicar <strong>SOLID</strong> e <strong>inyección de dependencias</strong> para poder reemplazar los efectos secundarios (red, reloj, azar) por dobles controlados.</li>
+        </ul>
+
+        <h3>Mocking con <code>mockall</code></h3>
+        <p>Rust no trae mocking nativo. El crate <strong><code>mockall</code></strong> genera mocks automáticos de un trait con <code>#[automock]</code>; en el test se definen las <strong>expectativas</strong> (qué métodos se llaman, con qué argumentos y qué devuelven).</p>
+        <pre data-code="rust">use mockall::automock;
+
+#[automock]
+trait Moneda { fn tirar(&self) -> bool; }        // dependencia a mockear
+
+fn jugar(m: &dyn Moneda) -> &str {
+    if m.tirar() { "cara" } else { "cruz" }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn gana_si_sale_cara() {
+        let mut mock = MockMoneda::new();
+        mock.expect_tirar().returning(|| true);  // controlo el azar (given)
+        assert_eq!(jugar(&mock), "cara");         // when / then
+    }
+}</pre>
+
+        <h3>Loom: explorar todos los entrelazados</h3>
+        <div class="callout"><strong>Loom</strong> es una herramienta para testear código concurrente: corre el test <strong>muchas veces permutando sistemáticamente los entrelazados posibles</strong> de los threads (y las reordenaciones de memoria permitidas), de modo que dispara <strong>condiciones de carrera y deadlocks</strong> que una corrida normal casi nunca revela. Se usa reemplazando los tipos de sincronización por los de <code>loom::sync</code> (Mutex, Arc, atomics) y no exige grandes refactors. Es lo más cercano a «probar <em>todos</em> los escenarios del §1» de forma automática.</div>
+
+        <h3>Testear actores</h3>
+        <p>Para actores se combina el <strong>mocking</strong> de actores con el patrón <strong>given-when-then</strong> (dado un estado, cuando llega un mensaje, entonces se espera cierto resultado), probando el manejo asincrónico. El reto que queda abierto es <strong>capturar los panics</strong> dentro de un actor y manejar <strong>timeouts</strong> para que el test no quede colgado.</p>
+
+        <p class="exam-answer"><strong>Para el final/TP:</strong> saber que <code>#[cfg(test)]</code> compila los tests solo en modo test, que se mockea con <code>mockall</code> gracias a la inyección de dependencias, y sobre todo que <strong>Loom</strong> valida la corrección concurrente explorando los interleavings —lo que a mano es inviable—.</p>
+      </section>

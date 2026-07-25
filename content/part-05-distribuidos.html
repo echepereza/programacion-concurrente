@@ -64,6 +64,13 @@ sequenceDiagram
 
         <div class="callout warning"><strong>Elegir según la carga (pregunta de final):</strong> con <strong>alta contención</strong> (mucha escritura sobre los mismos datos, p. ej. venta de tickets en hora pico donde hay que evitar sobreventa), <strong>optimista es mala idea</strong> (aborta y rehace constantemente) → conviene <strong>2PL/pessimista</strong> o timestamps, que serializan el acceso. Con <strong>baja contención</strong> y mayoría de lecturas, <strong>optimista</strong> gana (sin overhead de locks, más paralelismo).</div>
 
+        <h3>Más allá del 2PC: pesimista vs optimista, 3PC y Sagas</h3>
+        <ul class="study-list">
+          <li><strong>Bloqueo pesimista vs optimista + granularidad:</strong> el pesimista (2PL) toma locks por adelantado (seguro, pero con contención y riesgo de deadlock); el optimista no toma locks y valida al commit (más paralelismo, pero rehace bajo conflicto). La <strong>granularidad</strong> del lock (fila vs tabla vs archivo) equilibra concurrencia y overhead.</li>
+          <li><strong>Commit en tres fases (3PC):</strong> agrega una fase intermedia («pre-commit») al 2PC para que <em>no</em> sea bloqueante: si el coordinador cae, los participantes pueden decidir por <em>timeout</em> sin quedar colgados. A cambio, más mensajes y latencia.</li>
+          <li><strong>Sagas:</strong> para transacciones <em>largas</em> que tocan muchos servicios, en vez de un lock global se ejecuta una secuencia de pasos, cada uno con su <strong>acción compensatoria</strong> (undo). Si un paso falla, se corren las compensaciones de los pasos previos. Sacrifica aislamiento estricto por disponibilidad (típico en microservicios).</li>
+        </ul>
+
         <p class="exam-answer"><strong>En el final:</strong> «explicar 2PC (ventajas/desventajas)» y «en qué casos usarías concurrencia optimista». Para el escenario de <em>compra de tickets / sobreventa</em>: describir 2PL, timestamps y optimista con pros y contras, y concluir que con la alta concurrencia de escritura de la hora pico conviene un esquema <strong>pesimista (2PL / timestamps)</strong> para prevenir compras duplicadas, dejando lo optimista para la parte de solo-lectura (mostrar disponibilidad).</p>
       </section>
 
@@ -132,6 +139,35 @@ flowchart LR
           <li><strong>Bully:</strong> el proceso <code>P</code> que detecta la caída del coordinador manda <code>ELECTION</code> a todos los de <strong>ID mayor</strong>. Si nadie responde, <code>P</code> gana y anuncia <code>COORDINATOR</code>. Si responde alguien mayor (<code>OK</code>), <code>P</code> se retira y ese sigue la elección. Contras: en sistemas grandes genera muchos mensajes; un proceso de ID alto que falla puede reiniciar la elección repetidamente.</li>
           <li><strong>Ring:</strong> el que nota la caída crea un mensaje <code>ELECTION</code> con su ID y lo pasa a su sucesor; cada uno <strong>agrega su ID</strong> y reenvía. Cuando el mensaje completa la vuelta, el de <strong>mayor ID de la lista</strong> es el nuevo coordinador (se anuncia con <code>COORDINATOR</code>). Contras: latencia lineal con el número de procesos; requiere el anillo operativo.</li>
         </ul>
+        <div class="cmp two">
+          <figure class="diagram">
+            <div class="mermaid">
+sequenceDiagram
+    participant P4
+    participant P5
+    participant P6
+    Note over P4: nota que P7 (coord.) cayó
+    P4->>P5: ELECTION
+    P4->>P6: ELECTION
+    P5-->>P4: OK
+    P6-->>P4: OK
+    Note over P6: nadie mayor responde
+    P6->>P4: COORDINATOR
+    P6->>P5: COORDINATOR
+            </div>
+            <figcaption><strong>Bully:</strong> cada proceso desafía a los de ID mayor; el mayor vivo (P6) gana y se anuncia.</figcaption>
+          </figure>
+          <figure class="diagram">
+            <div class="mermaid">
+flowchart LR
+    A["P2 arranca · [2]"] --> B["P3 · [2,3]"]
+    B --> C["P5 · [2,3,5]"]
+    C --> D["vuelve a P2"]
+    D -->|"mayor de la lista = 5"| E["P5 = COORDINATOR"]
+            </div>
+            <figcaption><strong>Ring:</strong> el mensaje circula acumulando IDs; al volver, gana el mayor de la lista.</figcaption>
+          </figure>
+        </div>
 
         <p class="exam-answer"><strong>En el final:</strong> comparar los tres algoritmos de exclusión mutua (centralizado = simple pero SPOF; Ricart-Agrawala = sin coordinador pero N² mensajes; token ring = justo pero con latencia) y saber que Bully y Ring siempre eligen al de mayor ID.</p>
       </section>

@@ -13,7 +13,7 @@ oscuro, offline) con contenido y diseño propios.
 ## Índice
 
 - [Qué incluye](#qué-incluye)
-- [Contenido (18 capítulos + 3 anexos)](#contenido-18-capítulos--3-anexos)
+- [Contenido (19 capítulos + 3 anexos)](#contenido-19-capítulos--3-anexos)
 - [Cómo usarla](#cómo-usarla)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Cómo hacer cambios](#cómo-hacer-cambios)
@@ -28,10 +28,11 @@ oscuro, offline) con contenido y diseño propios.
 
 ## Qué incluye
 
-- **Apunte completo** de toda la materia, mapeado desde los resúmenes de cátedra y
-  enriquecido con las clases.
-- **Diagramas Mermaid** interactivos (intercalación de instrucciones, ciclo de vida de
-  actores, Redes de Petri, 2PC, deadlocks distribuidos, secuencias de sockets, etc.).
+- **Apunte completo** de toda la materia, mapeado desde los resúmenes de cátedra,
+  enriquecido con los resúmenes de las 21 clases y con las presentaciones teórica/práctica.
+- **Diagramas Mermaid** interactivos, varios replicados de las diapositivas de cátedra:
+  interleaving, ciclo de vida de actores, Redes de Petri (con **grafo de alcance** y
+  notación `p1..p6`), DAG de MapReduce, fan-out async, 2PC, deadlocks/probe, Bully y Ring.
 - **Código Rust** real por tema (Arc/Mutex, RwLock, canales mpsc, Actix, sockets…).
 - **Callouts «En el final»** al cierre de cada capítulo: cómo cae exactamente el tema.
 - **Anexo de finales resueltos** (16/07/2026 y 09/07/2026) + un diseño de sistema completo.
@@ -39,7 +40,7 @@ oscuro, offline) con contenido y diseño propios.
 - **PWA:** buscador, notas en Markdown (se guardan solas), resaltador, modo claro/oscuro,
   instalable y con funcionamiento **offline** (service worker).
 
-## Contenido (18 capítulos + 3 anexos)
+## Contenido (19 capítulos + 3 anexos)
 
 | # | Capítulo | Temas |
 | --- | --- | --- |
@@ -61,6 +62,7 @@ oscuro, offline) con contenido y diseño propios.
 | 16 | Sockets y cliente-servidor | TCP/UDP, iterativo/concurrente, syscalls, `TcpListener`/`TcpStream` |
 | 17 | Ambientes distribuidos | entidad y capacidades, **acción/regla/comportamiento**, conocimiento |
 | 18 | Redes y modelo OSI | capas, servicio vs protocolo, tipos de servicio, TCP/IP |
+| 19 | Testing de concurrencia | `#[cfg(test)]`, mockall, inyección de dependencias, **Loom** |
 | A | Finales resueltos | los 2 finales reales resueltos + diseño de sistema (venta online) |
 | B | Banco de ejercicios | parciales resueltos (busy-wait, modelos, Petri, actores, V/F) |
 | C | Glosario | definiciones breves de todos los términos |
@@ -97,6 +99,7 @@ programacion-concurrente/
 │   ├── part-04-petri.html                (cap.  12)
 │   ├── part-05-distribuidos.html         (caps. 13-15)
 │   ├── part-05b-sockets-ambientes.html   (caps. 16-18)
+│   ├── part-05c-testing.html             (cap.  19)
 │   └── part-06-anexos.html               (anexos A, B, C)
 ├── toc.html                # Índice de la barra lateral  ← FUENTE
 ├── build.py                # Ensambla index/resumen desde content/ + toc.html

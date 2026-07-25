@@ -364,12 +364,33 @@ let total: u64 = (0..1_000_000u64)
     .reduce(|| 0, |a, b| a + b);   // reduce combina resultados parciales
 ```
 
+Dos utilidades más que usa la cátedra: `par_bridge()` convierte cualquier iterador secuencial en paralelo (cuando no hay un `par_iter` directo), y `std::thread::available_parallelism()` devuelve cuántos hilos paralelos ofrece el hardware, para dimensionar el pool. El «Hello World» práctico de fork-join es el **Merge Sort concurrente**: partir el vector, ordenar cada mitad en paralelo y mergear.
+
 ### MapReduce, Dremel y vectorización
 
 - **MapReduce** (Google, 2004): modelo para procesar grandes datasets. El usuario define **map** (procesa un par clave/valor y emite pares intermedios) y **reduce** (combina todos los valores de una misma clave). Su «Hello World» es el **conteo de palabras (Word Count)**.
 - **Dremel**: consultas en tiempo casi real (expuesto como *BigQuery*); la consulta se «empuja» y reescribe por un árbol jerárquico y los resultados se ensamblan agregando las respuestas de los niveles inferiores.
 - **Vectorización (SIMD, *Single Instruction, Multiple Data*)**: aplicar el mismo cómputo simple a muchos datos independientes a la vez. Ante la ralentización de la **Ley de Moore**, los transistores extra se usaron en varias ALUs sobre los mismos registros → instrucciones SIMD (MMX/SSE/AVX en x86, NEON en ARM). Los registros son vectores de tamaño fijo (128–512 bits) divididos en **carriles (lanes)**. Operaciones «verticales» (entre registros, mismo carril: `x0+y0`) son eficientes; las «horizontales» (reducir un vector a un escalar: `x0+x1+x2+x3`) son más lentas. Ideal para sonido, imágenes, video y entrenar redes neuronales.
-- **CUDA**: estándar de facto de NVIDIA para GPUs; modela «threads» en bloques que operan sobre porciones de memoria independientes (direccionables en 1D/2D/3D), permitiendo miles de threads concurrentes.
+- **CUDA**: estándar de facto de NVIDIA para GPUs; modela «threads» en bloques que operan sobre porciones de memoria independientes (direccionables en 1D/2D/3D), permitiendo miles de threads concurrentes. En GPU la ejecución se agenda en **warps** de 32 hilos (SIMT): todos ejecutan la misma instrucción, y un salto condicional divergente obliga a serializar las dos ramas.
+
+```mermaid
+flowchart LR
+    RD["read_dir"] --> F1["flat_map lines · file 1"]
+    RD --> F2["flat_map lines · file 2"]
+    F1 --> M1["map word_counts · línea 1"]
+    F1 --> M2["map word_counts · línea 2"]
+    F2 --> M3["map word_counts · línea 1"]
+    F2 --> M4["map word_counts · línea 2"]
+    M1 --> R1["reduce"]
+    M2 --> R1
+    M3 --> R2["reduce"]
+    M4 --> R2
+    R1 --> RF["reduce final"]
+    R2 --> RF
+          
+```
+
+*Word Count como DAG (el «Hello World» de MapReduce, con Rayon): read_dir → flat_map(lines) → map(contar) → reduce en árbol. El map procesa cada línea en paralelo; el reduce combina los conteos parciales de a pares hasta el resultado final.*
 
 **En el final:** propiedades de fork-join (determinístico, sin races, aislado), qué es work stealing (deque, robar del inicio de otra cola) y por qué SIMD/GPU sirven para «mismo cómputo sobre muchos datos independientes» y no para lógica con estado compartido.
 
@@ -438,6 +459,21 @@ async fn combinar() -> usize {
     a.len() + b.len()
 }
 ```
+
+```mermaid
+flowchart LR
+    U["Usuario"] --> RQ["Request"]
+    RQ --> DB[("DB")]
+    DB --> S1["Servicio 1"]
+    DB --> S2["Servicio 2"]
+    DB --> SN["Servicio N"]
+    S1 --> RS["Response"]
+    S2 --> RS
+    SN --> RS
+          
+```
+
+*Caso real de async: un request consulta la DB y dispara N llamadas a servicios externos concurrentemente (fan-out con join). Mientras cada una espera su I/O, el mismo hilo atiende las otras; la Response se arma cuando todas resolvieron. Con threads bloqueantes esto costaría N stacks; con async, N tareas livianas.*
 
 ### Executors y runtimes
 
@@ -996,6 +1032,26 @@ flowchart LR
 
 *Cada filósofo comparte un palillo con cada vecino. Soluciones al deadlock: (a) ordenar los recursos y tomar siempre primero el de menor índice; (b) que un filósofo tome en orden inverso; (c) permitir a lo sumo N-1 sentados a la mesa; (d) un mozo/mutex que dé permiso para agarrar de a pares.*
 
+#### Solución distribuida de Chandy-Misra
+
+Versión por **pasaje de mensajes** (sin memoria compartida), **libre de deadlock**, que se implementa naturalmente con [actores](#mensajes). Reglas:
+
+- Por cada par de filósofos que compiten por un palito se crea **un palito**, asignado al inicio al filósofo de **ID más bajo** (rompe la simetría → evita la espera circular).
+- Cada palito está **sucio** o **limpio**; inicialmente todos están sucios.
+- Para comer, el filósofo pide por mensaje a sus vecinos los palitos que le faltan.
+- Al recibir un pedido: si su palito está **limpio**, lo **conserva** (el vecino espera); si está **sucio**, lo **limpia y lo entrega**.
+- Después de comer, todos sus palitos quedan **sucios**; si alguien los había pedido, los limpia y los manda.
+
+La combinación «el de menor ID arranca con el palito» + «sucio se cede, limpio se retiene» garantiza
+
+no deadlock
+
+(no hay espera circular) y
+
+no starvation
+
+(un palito sucio siempre termina cediéndose). Es la solución distribuida clásica y la que se pide implementar con actores.
+
 ### Los fumadores (Patil)
 
 Tres fumadores, cada uno con un ingrediente infinito distinto (**tabaco**, **papel**, **fósforos**). Un *agente* pone dos ingredientes aleatorios en la mesa; el fumador que tiene el **tercero** los toma, arma el cigarrillo y fuma. Ejercita despertar selectivamente al proceso correcto según la combinación disponible.
@@ -1062,6 +1118,23 @@ representa todos los estados (marcas) alcanzables y las transiciones entre ellos
 
 **Interpretaciones:** los lugares pueden ser precondiciones, datos, señales o buffers de entrada; las transiciones, eventos, cómputos o procesamiento de señales; los lugares de salida, postcondiciones, datos/señales/buffers de salida.
 
+### Grafo de alcance (cómo se analiza una red)
+
+El **grafo de alcance** enumera todas las marcas (estados) alcanzables desde `M0` y las transiciones entre ellas. Es *la* herramienta para verificar propiedades: si una marca «mala» nunca aparece, la red es **segura**; si desde toda marca se puede seguir disparando, no hay **deadlock**. Ejemplo con una red fork-join —`t1` bifurca `p1` en `p2,p3`; `t2: p2→p4`; `t3: p3→p5`; `t4` sincroniza `p4,p5→p1`— con marcas `(p1,p2,p3,p4,p5)`:
+
+```mermaid
+flowchart TB
+    M0(("M0 = (1,0,0,0,0)")) -->|t1| M1(("M1 = (0,1,1,0,0)"))
+    M1 -->|t2| M2(("M2 = (0,0,1,1,0)"))
+    M1 -->|t3| M3(("M3 = (0,1,0,0,1)"))
+    M2 -->|t3| M4(("M4 = (0,0,0,1,1)"))
+    M3 -->|t2| M4
+    M4 -->|t4| M0
+          
+```
+
+*El «rombo» M1 → M2/M3 → M4 muestra la concurrencia: t2 y t3 son independientes y pueden dispararse en cualquier orden, llegando a la misma marca M4 (esto es el interleaving del §1 hecho gráfico). El ciclo de vuelta a M0 por t4 (el join) muestra que la red es viva y acotada.*
+
 ### Red General de Petri
 
 Se define como `PN = (T, P, A, W, M0)`, agregando:
@@ -1116,24 +1189,26 @@ flowchart LR
 
 ### Ejemplo 2 — Productor-Consumidor con buffer acotado
 
+Con la **notación de la cátedra** (la que aparece en parciales): lugares `p1..p6`, transiciones `t1..t4`.
+
 ```mermaid
 flowchart LR
-    PL(("Productor listo")) --> tp["producir"]
-    tp --> PP(("item en mano"))
-    PP --> dep["depositar"]
-    LIB(("Libres (N)")) --> dep
-    dep --> PL
-    dep --> OCU(("Ocupados (0)"))
-    OCU --> ret["retirar"]
-    ret --> LIB
-    ret --> CC(("Consumidor con item"))
-    CC --> tc["consumir"]
-    tc --> CL(("Consumidor listo"))
-    CL --> ret
+    p1(("p1 · productor listo")) --> t1["t1"]
+    P6(("p6 = N · libres")) --> t1
+    t1 --> p2(("p2 · produciendo"))
+    p2 --> t2["t2"]
+    t2 --> p1
+    t2 --> p5(("p5 · items"))
+    p5 --> t3["t3"]
+    p3(("p3 · consumidor listo")) --> t3
+    t3 --> p4(("p4 · consumiendo"))
+    t3 --> P6
+    p4 --> t4["t4"]
+    t4 --> p3
           
 ```
 
-*Libres arranca con N tokens (huecos) y Ocupados con 0. Depositar requiere un hueco libre (consume de Libres, produce en Ocupados); retirar requiere un ítem (consume de Ocupados, produce en Libres). Invariante Libres + Ocupados = N: nunca se sobrepasa la capacidad. Son exactamente los semáforos notFull (Libres) y notEmpty (Ocupados).*
+*Productor: p1 → t1 → p2 → t2 → p1; consumidor: p3 → t3 → p4 → t4 → p3. El buffer son dos lugares: p5 = ítems disponibles (semáforo notEmpty) y p6 = huecos libres, inicializado en N (semáforo notFull). t1 solo dispara si hay un hueco (consume de p6); t3 devuelve el hueco (produce en p6). Para el buffer infinito se quita p6: solo hace falta p5 (notEmpty). Invariante p5 + p6 + p2 = N: nunca se sobrepasa la capacidad.*
 
 ### Ejemplo 3 — Reserva de asientos de un estadio (final 16/07/2026)
 
@@ -1302,6 +1377,12 @@ optimista
 
 gana (sin overhead de locks, más paralelismo).
 
+### Más allá del 2PC: pesimista vs optimista, 3PC y Sagas
+
+- **Bloqueo pesimista vs optimista + granularidad:** el pesimista (2PL) toma locks por adelantado (seguro, pero con contención y riesgo de deadlock); el optimista no toma locks y valida al commit (más paralelismo, pero rehace bajo conflicto). La **granularidad** del lock (fila vs tabla vs archivo) equilibra concurrencia y overhead.
+- **Commit en tres fases (3PC):** agrega una fase intermedia («pre-commit») al 2PC para que *no* sea bloqueante: si el coordinador cae, los participantes pueden decidir por *timeout* sin quedar colgados. A cambio, más mensajes y latencia.
+- **Sagas:** para transacciones *largas* que tocan muchos servicios, en vez de un lock global se ejecuta una secuencia de pasos, cada uno con su **acción compensatoria** (undo). Si un paso falla, se corren las compensaciones de los pasos previos. Sacrifica aislamiento estricto por disponibilidad (típico en microservicios).
+
 **En el final:** «explicar 2PC (ventajas/desventajas)» y «en qué casos usarías concurrencia optimista». Para el escenario de *compra de tickets / sobreventa*: describir 2PL, timestamps y optimista con pros y contras, y concluir que con la alta concurrencia de escritura de la hora pico conviene un esquema **pesimista (2PL / timestamps)** para prevenir compras duplicadas, dejando lo optimista para la parte de solo-lectura (mostrar disponibilidad).
 
 <a id="deadlocks"></a>
@@ -1367,6 +1448,35 @@ Sirven para elegir un coordinador cuando un algoritmo lo requiere. Se asume que 
 
 - **Bully:** el proceso `P` que detecta la caída del coordinador manda `ELECTION` a todos los de **ID mayor**. Si nadie responde, `P` gana y anuncia `COORDINATOR`. Si responde alguien mayor (`OK`), `P` se retira y ese sigue la elección. Contras: en sistemas grandes genera muchos mensajes; un proceso de ID alto que falla puede reiniciar la elección repetidamente.
 - **Ring:** el que nota la caída crea un mensaje `ELECTION` con su ID y lo pasa a su sucesor; cada uno **agrega su ID** y reenvía. Cuando el mensaje completa la vuelta, el de **mayor ID de la lista** es el nuevo coordinador (se anuncia con `COORDINATOR`). Contras: latencia lineal con el número de procesos; requiere el anillo operativo.
+
+```mermaid
+sequenceDiagram
+    participant P4
+    participant P5
+    participant P6
+    Note over P4: nota que P7 (coord.) cayó
+    P4->>P5: ELECTION
+    P4->>P6: ELECTION
+    P5-->>P4: OK
+    P6-->>P4: OK
+    Note over P6: nadie mayor responde
+    P6->>P4: COORDINATOR
+    P6->>P5: COORDINATOR
+            
+```
+
+*Bully: cada proceso desafía a los de ID mayor; el mayor vivo (P6) gana y se anuncia.*
+
+```mermaid
+flowchart LR
+    A["P2 arranca · [2]"] --> B["P3 · [2,3]"]
+    B --> C["P5 · [2,3,5]"]
+    C --> D["vuelve a P2"]
+    D -->|"mayor de la lista = 5"| E["P5 = COORDINATOR"]
+            
+```
+
+*Ring: el mensaje circula acumulando IDs; al volver, gana el mayor de la lista.*
 
 **En el final:** comparar los tres algoritmos de exclusión mutua (centralizado = simple pero SPOF; Ricart-Agrawala = sin coordinador pero N² mensajes; token ring = justo pero con latencia) y saber que Bully y Ring siempre eligen al de mayor ID.
 
@@ -1576,6 +1686,72 @@ Para entender la comunicación distribuida conviene repasar el **modelo de capas
 - **OSI:** estándar de 7 capas que define interfaces y protocolos en cada nivel. **TCP/IP** es la pila real (IP, TCP, UDP y protocolos de aplicación como HTTP, FTP).
 
 **En el final:** suele venir como apoyo de sockets. Recordar: TCP = con conexión, confiable, control de flujo/errores; UDP = sin conexión, sin garantías; y que cada capa da un *servicio* a la de arriba y habla un *protocolo* con su par.
+
+<a id="testing"></a>
+
+## 19. Testing de programas concurrentes
+
+Probar código concurrente es difícil porque los bugs (races, deadlocks) dependen del *interleaving* y no aparecen en todas las corridas: un test puede pasar mil veces y fallar la vez 1001. La materia cierra con herramientas pensadas justamente para eso.
+
+### Testing en Rust
+
+- Los tests viven en el **mismo módulo** que el código, en un submódulo anotado con `#[cfg(test)]` (se compila *solo* al correr `cargo test`) y funciones marcadas con `#[test]`.
+- Los tests corren **concurrentemente** entre sí por defecto.
+- **Diseño testeable:** aplicar **SOLID** e **inyección de dependencias** para poder reemplazar los efectos secundarios (red, reloj, azar) por dobles controlados.
+
+### Mocking con mockall
+
+Rust no trae mocking nativo. El crate **`mockall`** genera mocks automáticos de un trait con `#[automock]`; en el test se definen las **expectativas** (qué métodos se llaman, con qué argumentos y qué devuelven).
+
+```rust
+use mockall::automock;
+
+#[automock]
+trait Moneda { fn tirar(&self) -> bool; }        // dependencia a mockear
+
+fn jugar(m: &dyn Moneda) -> &str {
+    if m.tirar() { "cara" } else { "cruz" }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn gana_si_sale_cara() {
+        let mut mock = MockMoneda::new();
+        mock.expect_tirar().returning(|| true);  // controlo el azar (given)
+        assert_eq!(jugar(&mock), "cara");         // when / then
+    }
+}
+```
+
+### Loom: explorar todos los entrelazados
+
+Loom
+
+es una herramienta para testear código concurrente: corre el test
+
+muchas veces permutando sistemáticamente los entrelazados posibles
+
+de los threads (y las reordenaciones de memoria permitidas), de modo que dispara
+
+condiciones de carrera y deadlocks
+
+que una corrida normal casi nunca revela. Se usa reemplazando los tipos de sincronización por los de
+
+loom::sync
+
+(Mutex, Arc, atomics) y no exige grandes refactors. Es lo más cercano a «probar
+
+todos
+
+los escenarios del §1» de forma automática.
+
+### Testear actores
+
+Para actores se combina el **mocking** de actores con el patrón **given-when-then** (dado un estado, cuando llega un mensaje, entonces se espera cierto resultado), probando el manejo asincrónico. El reto que queda abierto es **capturar los panics** dentro de un actor y manejar **timeouts** para que el test no quede colgado.
+
+**Para el final/TP:** saber que `#[cfg(test)]` compila los tests solo en modo test, que se mockea con `mockall` gracias a la inyección de dependencias, y sobre todo que **Loom** valida la corrección concurrente explorando los interleavings —lo que a mano es inviable—.
 
 <a id="finales"></a>
 

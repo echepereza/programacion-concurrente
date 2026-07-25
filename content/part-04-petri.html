@@ -18,6 +18,21 @@
         <div class="callout"><strong>Regla de disparo (ordinaria):</strong> una transición está <strong>habilitada</strong> si <em>todos</em> sus lugares de entrada tienen al menos un token. Al <strong>dispararse (fire)</strong>, consume un token de cada lugar de entrada y produce un token en cada lugar de salida. El <strong>grafo de alcance</strong> representa todos los estados (marcas) alcanzables y las transiciones entre ellos.</div>
         <p><strong>Interpretaciones:</strong> los lugares pueden ser precondiciones, datos, señales o buffers de entrada; las transiciones, eventos, cómputos o procesamiento de señales; los lugares de salida, postcondiciones, datos/señales/buffers de salida.</p>
 
+        <h3>Grafo de alcance (cómo se analiza una red)</h3>
+        <p>El <strong>grafo de alcance</strong> enumera todas las marcas (estados) alcanzables desde <code>M0</code> y las transiciones entre ellas. Es <em>la</em> herramienta para verificar propiedades: si una marca «mala» nunca aparece, la red es <strong>segura</strong>; si desde toda marca se puede seguir disparando, no hay <strong>deadlock</strong>. Ejemplo con una red fork-join —<code>t1</code> bifurca <code>p1</code> en <code>p2,p3</code>; <code>t2: p2→p4</code>; <code>t3: p3→p5</code>; <code>t4</code> sincroniza <code>p4,p5→p1</code>— con marcas <code>(p1,p2,p3,p4,p5)</code>:</p>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart TB
+    M0(("M0 = (1,0,0,0,0)")) -->|t1| M1(("M1 = (0,1,1,0,0)"))
+    M1 -->|t2| M2(("M2 = (0,0,1,1,0)"))
+    M1 -->|t3| M3(("M3 = (0,1,0,0,1)"))
+    M2 -->|t3| M4(("M4 = (0,0,0,1,1)"))
+    M3 -->|t2| M4
+    M4 -->|t4| M0
+          </div>
+          <figcaption>El «rombo» <code>M1 → M2/M3 → M4</code> muestra la <strong>concurrencia</strong>: <code>t2</code> y <code>t3</code> son independientes y pueden dispararse en cualquier orden, llegando a la misma marca <code>M4</code> (esto es el interleaving del §1 hecho gráfico). El ciclo de vuelta a <code>M0</code> por <code>t4</code> (el join) muestra que la red es <strong>viva</strong> y <strong>acotada</strong>.</figcaption>
+        </figure>
+
         <h3>Red General de Petri</h3>
         <p>Se define como <code>PN = (T, P, A, W, M0)</code>, agregando:</p>
         <ul class="study-list">
@@ -48,23 +63,24 @@ flowchart LR
         </figure>
 
         <h3>Ejemplo 2 — Productor-Consumidor con buffer acotado</h3>
+        <p>Con la <strong>notación de la cátedra</strong> (la que aparece en parciales): lugares <code>p1..p6</code>, transiciones <code>t1..t4</code>.</p>
         <figure class="diagram">
           <div class="mermaid">
 flowchart LR
-    PL(("Productor listo")) --> tp["producir"]
-    tp --> PP(("item en mano"))
-    PP --> dep["depositar"]
-    LIB(("Libres (N)")) --> dep
-    dep --> PL
-    dep --> OCU(("Ocupados (0)"))
-    OCU --> ret["retirar"]
-    ret --> LIB
-    ret --> CC(("Consumidor con item"))
-    CC --> tc["consumir"]
-    tc --> CL(("Consumidor listo"))
-    CL --> ret
+    p1(("p1 · productor listo")) --> t1["t1"]
+    P6(("p6 = N · libres")) --> t1
+    t1 --> p2(("p2 · produciendo"))
+    p2 --> t2["t2"]
+    t2 --> p1
+    t2 --> p5(("p5 · items"))
+    p5 --> t3["t3"]
+    p3(("p3 · consumidor listo")) --> t3
+    t3 --> p4(("p4 · consumiendo"))
+    t3 --> P6
+    p4 --> t4["t4"]
+    t4 --> p3
           </div>
-          <figcaption><code>Libres</code> arranca con <code>N</code> tokens (huecos) y <code>Ocupados</code> con 0. <strong>Depositar</strong> requiere un hueco libre (consume de <code>Libres</code>, produce en <code>Ocupados</code>); <strong>retirar</strong> requiere un ítem (consume de <code>Ocupados</code>, produce en <code>Libres</code>). Invariante <code>Libres + Ocupados = N</code>: nunca se sobrepasa la capacidad. Son exactamente los semáforos <code>notFull</code> (Libres) y <code>notEmpty</code> (Ocupados).</figcaption>
+          <figcaption>Productor: <code>p1 → t1 → p2 → t2 → p1</code>; consumidor: <code>p3 → t3 → p4 → t4 → p3</code>. El buffer son dos lugares: <code>p5</code> = ítems disponibles (semáforo <code>notEmpty</code>) y <code>p6</code> = huecos libres, inicializado en <code>N</code> (semáforo <code>notFull</code>). <code>t1</code> solo dispara si hay un hueco (consume de <code>p6</code>); <code>t3</code> devuelve el hueco (produce en <code>p6</code>). Para el <strong>buffer infinito</strong> se quita <code>p6</code>: solo hace falta <code>p5</code> (<code>notEmpty</code>). Invariante <code>p5 + p6 + p2 = N</code>: nunca se sobrepasa la capacidad.</figcaption>
         </figure>
 
         <h3>Ejemplo 3 — Reserva de asientos de un estadio (final 16/07/2026)</h3>
