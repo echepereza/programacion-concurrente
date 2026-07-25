@@ -231,23 +231,6 @@ Es un ensamblador en Python (sin dependencias). En cada corrida:
 > Para *rebuildear* necesitás la carpeta hermana `aprendizaje-automatico` (es la plantilla).
 > El `index.html` ya generado **no** la necesita: es autocontenido y se publica solo.
 
-## Publicar en GitHub Pages
-
-1. Creá un repo **público** vacío en [github.com/new](https://github.com/new) llamado
-   `programacion-concurrente` (sin README/licencia).
-2. Conectá y subí:
-
-   ```bash
-   git remote add origin https://github.com/TU-USUARIO/programacion-concurrente.git
-   git push -u origin main
-   ```
-
-3. En el repo: **Settings → Pages → Source:** *Deploy from a branch* → **Branch:** `main`
-   → `/(root)` → **Save**.
-4. En ~1 minuto queda online en `https://TU-USUARIO.github.io/programacion-concurrente/`.
-
-Sobre HTTPS de github.io el **service worker funciona**: la app es instalable y anda offline.
-
 ## Créditos
 
 Contenido basado en los resúmenes, presentaciones, clases y exámenes de la cátedra de
