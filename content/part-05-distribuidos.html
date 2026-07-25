@@ -1,0 +1,137 @@
+      <section class="chapter" id="transacciones" data-title="transacciones distribuidas ACID atomicidad consistencia aislamiento durabilidad serializable begin end abort commit rollback private workspace writeahead log two phase commit 2PC coordinador two phase locking 2PL strict concurrencia optimista timestamps lamport venta tickets sobreventa">
+        <div class="chapter-head">
+          <div class="chapter-number">13</div>
+          <div><h2>Transacciones distribuidas y ACID</h2></div>
+        </div>
+
+        <p>Un sistema de <strong>transacciones</strong> se compone de procesos independientes que pueden fallar aleatoriamente. Los errores de comunicación los maneja de forma transparente la capa de red, y se asume <strong>almacenamiento estable</strong> (discos con probabilidad muy baja de perder datos). Primitivas: <code>BEGIN</code>, <code>END</code> (intenta commit), <code>ABORT</code> (rollback a los valores previos), <code>READ</code>, <code>WRITE</code>.</p>
+
+        <h3>Propiedades ACID</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Propiedad</th><th>Significado</th></tr></thead>
+            <tbody>
+              <tr><td><strong>A</strong>tómica</td><td>Unidad indivisible: se completa <em>toda</em> o no se realiza en absoluto.</td></tr>
+              <tr><td><strong>C</strong>onsistente</td><td>Cumple todos los invariantes del sistema.</td></tr>
+              <tr><td><strong>I</strong>solated / Serializable</td><td>Las transacciones concurrentes no interfieren; su ejecución equivale a <em>alguna</em> ejecución serial.</td></tr>
+              <tr><td><strong>D</strong>urable</td><td>Una vez confirmados (commit), los cambios son permanentes. Las transacciones anidadas son la excepción a la durabilidad.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Implementaciones</h3>
+        <ul class="study-list">
+          <li><strong>Private Workspace:</strong> el proceso recibe una <em>copia</em> de los archivos, trabaja sobre ella y persiste al commit. Desventaja: muy costoso sin optimizaciones.</li>
+          <li><strong>Writeahead Log:</strong> se modifican los archivos <em>in place</em> pero antes se escribe en un <em>log</em> la lista de cambios (primero el log, luego el archivo). Al commitear se escribe un registro de commit; al abortar se lee el log <strong>hacia atrás</strong> para deshacer (rollback).</li>
+        </ul>
+
+        <h3>Two-Phase Commit (2PC)</h3>
+        <p>Protocolo de confirmación distribuida con un <strong>coordinador</strong>:</p>
+        <figure class="diagram">
+          <div class="mermaid">
+sequenceDiagram
+    participant C as Coordinador
+    participant P as Participantes
+    Note over C: Fase 1 — Preparación
+    C->>C: escribe "prepare" en su log
+    C->>P: prepare
+    P->>P: escriben "ready" en su log
+    P->>C: ready
+    Note over C: Fase 2 — Confirmación
+    C->>C: escribe "commit"
+    C->>P: commit
+    P->>P: escriben "commit" en su log
+    P->>C: finished
+          </div>
+          <figcaption><strong>Fase 1:</strong> el coordinador escribe «prepare» y lo envía; los participantes escriben «ready» y responden. <strong>Fase 2:</strong> el coordinador confirma («commit») y los participantes aplican y responden «finished». Todo pasa por el log para poder recuperarse ante caídas.</figcaption>
+        </figure>
+        <div class="cmp two">
+          <div class="callout"><strong>Ventajas del 2PC:</strong> garantiza atomicidad global (todos commitean o ninguno), es simple y recuperable gracias al log.</div>
+          <div class="callout danger"><strong>Desventajas:</strong> es <em>bloqueante</em> — si el coordinador cae en la fase 2, los participantes quedan en «ready» esperando; el coordinador es cuello de botella y punto único de fallo; agrega latencia (2 rondas de mensajes).</div>
+        </div>
+
+        <h3>Control de concurrencia</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Técnica</th><th>Cómo funciona</th><th>Ventajas / desventajas</th></tr></thead>
+            <tbody>
+              <tr><td><strong>2PL</strong> (Two-Phase Locking)</td><td>Fase de <em>expansión</em>: toma todos los locks necesarios. Fase de <em>contracción</em>: los libera y no puede tomar nuevos. <strong>Strict 2PL</strong>: la contracción ocurre después del commit.</td><td>Garantiza serializable. <span class="tag red">puede causar deadlocks</span></td></tr>
+              <tr><td><strong>Concurrencia optimista</strong></td><td>Modifica sin control esperando no tener conflictos; al commit verifica si otra transacción tocó los mismos archivos. Si hay conflicto, <strong>aborta</strong>.</td><td>Libre de deadlocks, favorece el paralelismo. Rehacer el trabajo es costoso <em>bajo alta contención</em>.</td></tr>
+              <tr><td><strong>Timestamps</strong></td><td>Cada transacción recibe un timestamp único global al iniciar (Lamport). Cada archivo guarda timestamps de lectura/escritura. Si el TS de la transacción es mayor que el del archivo, procede; si es menor (llegó «tarde»), aborta. Al commit actualiza los timestamps.</td><td>Sin deadlocks (ordena por tiempo). Puede abortar transacciones viejas que llegan tarde.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout warning"><strong>Elegir según la carga (pregunta de final):</strong> con <strong>alta contención</strong> (mucha escritura sobre los mismos datos, p. ej. venta de tickets en hora pico donde hay que evitar sobreventa), <strong>optimista es mala idea</strong> (aborta y rehace constantemente) → conviene <strong>2PL/pessimista</strong> o timestamps, que serializan el acceso. Con <strong>baja contención</strong> y mayoría de lecturas, <strong>optimista</strong> gana (sin overhead de locks, más paralelismo).</div>
+
+        <p class="exam-answer"><strong>En el final:</strong> «explicar 2PC (ventajas/desventajas)» y «en qué casos usarías concurrencia optimista». Para el escenario de <em>compra de tickets / sobreventa</em>: describir 2PL, timestamps y optimista con pros y contras, y concluir que con la alta concurrencia de escritura de la hora pico conviene un esquema <strong>pesimista (2PL / timestamps)</strong> para prevenir compras duplicadas, dejando lo optimista para la parte de solo-lectura (mostrar disponibilidad).</p>
+      </section>
+
+      <section class="chapter" id="deadlocks" data-title="deadlocks distribuidos interbloqueo deteccion centralizado grafo recursos ciclo distribuido probe message chandy misra haas prevencion timestamp wait-die wound-wait coffman falso deadlock lamport">
+        <div class="chapter-head">
+          <div class="chapter-number">14</div>
+          <div><h2>Deadlocks distribuidos</h2></div>
+        </div>
+
+        <p>Un <strong>deadlock</strong> es una situación en la que dos o más acciones se esperan mutuamente para terminar, y por eso ninguna avanza. En un sistema distribuido no hay un estado global observable de un vistazo, así que detectarlo y prevenirlo es más difícil.</p>
+
+        <h3>Detección</h3>
+        <ul class="study-list">
+          <li><strong>Algoritmo centralizado:</strong> un coordinador mantiene el <strong>grafo de uso de recursos</strong>; los procesos le avisan al adquirir/liberar y él busca <strong>ciclos</strong>. Problema: mensajes <em>desordenados</em> pueden generar <strong>falsos deadlocks</strong>; se corrige con timestamps globales (Lamport).</li>
+          <li><strong>Algoritmo distribuido (probe / Chandy-Misra-Haas):</strong> cuando un proceso se bloquea esperando un recurso, envía un <strong>probe message</strong> (con IDs del proceso bloqueado, emisor y destinatario) al que tiene el recurso. Éste lo reenvía a los procesos que a su vez tienen lo que él necesita. Si el probe <strong>vuelve al proceso original</strong>, hay un ciclo → deadlock.</li>
+        </ul>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    A["P1 (bloqueado)"] -->|"probe (1,1,2)"| B["P2"]
+    B -->|"probe (1,2,3)"| C["P3"]
+    C -->|"probe (1,3,1)"| A
+    A -. "el probe volvió: ciclo = deadlock" .- A
+          </div>
+          <figcaption>Detección distribuida por <em>probe</em>: el mensaje sigue la cadena «espera-por»; si regresa a quien lo originó, existe un ciclo en el grafo global de espera.</figcaption>
+        </figure>
+
+        <h3>Prevención (con timestamps globales)</h3>
+        <p>Se asigna a cada transacción un timestamp único al iniciar. Cuando un proceso se bloquea por un recurso que otro tiene, se comparan los timestamps (más chico = más «viejo»):</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Algoritmo</th><th>El que pide es MÁS VIEJO</th><th>El que pide es MÁS JOVEN</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Wait-Die</strong></td><td>Espera</td><td>Aborta (muere) y reintenta</td></tr>
+              <tr><td><strong>Wound-Wait</strong></td><td>Aborta (hiere) al que tiene el recurso, para tomarlo</td><td>Espera</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout">Ambos evitan la <strong>espera circular</strong> (condición de Coffman) porque solo se permite esperar en <em>una</em> dirección del orden temporal. La diferencia es a quién se aborta: en Wait-Die el joven se sacrifica; en Wound-Wait el viejo desaloja al joven.</div>
+
+        <p class="exam-answer"><strong>En el final:</strong> «explicar el sistema de deadlocks distribuido con un gráfico». Contar detección (centralizada con grafo + falsos deadlocks por mensajes desordenados; distribuida con probe y ciclo) y prevención (wait-die vs wound-wait con timestamps). El gráfico esperado es el ciclo de espera / recorrido del probe.</p>
+      </section>
+
+      <section class="chapter" id="exclusion" data-title="exclusion mutua distribuida centralizado ricart agrawala token ring eleccion de lider bully ring coordinador timestamp anillo logico punto unico de fallo">
+        <div class="chapter-head">
+          <div class="chapter-number">15</div>
+          <div><h2>Exclusión mutua distribuida y elección de líder</h2></div>
+        </div>
+
+        <h3>Exclusión mutua distribuida</h3>
+        <p>Garantizar que <strong>un solo proceso a la vez</strong> entre a la sección crítica, sin memoria compartida, solo con mensajes.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Algoritmo</th><th>Idea</th><th>Contras</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Centralizado</strong></td><td>Un coordinador recibe <code>request</code>; si la SC está libre responde <code>OK</code>, si no encola y responde al liberarse.</td><td>Cuello de botella y <strong>punto único de fallo</strong>.</td></tr>
+              <tr><td><strong>Distribuido (Ricart-Agrawala)</strong></td><td>El que quiere entrar manda <code>(SC, id, timestamp)</code> a todos. Cada uno: si no está ni quiere → <code>OK</code>; si está en la SC → encola y da <code>OK</code> al salir; si también quiere → gana el <strong>timestamp menor</strong>. Entra cuando recibe <code>OK</code> de <em>todos</em>.</td><td>Muchos mensajes; N puntos de fallo.</td></tr>
+              <tr><td><strong>Token Ring</strong></td><td>Anillo lógico; un <strong>token</strong> circula; solo quien lo tiene entra a la SC. Al salir sigue circulando.</td><td>Latencia proporcional al tamaño del anillo; si se pierde el token hay que regenerarlo.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Elección de líder</h3>
+        <p>Sirven para elegir un coordinador cuando un algoritmo lo requiere. Se asume que cada proceso tiene un <strong>ID único</strong>, corre uno por máquina y conoce el número de los demás. En ambos gana el de <strong>mayor ID</strong>.</p>
+        <ul class="study-list">
+          <li><strong>Bully:</strong> el proceso <code>P</code> que detecta la caída del coordinador manda <code>ELECTION</code> a todos los de <strong>ID mayor</strong>. Si nadie responde, <code>P</code> gana y anuncia <code>COORDINATOR</code>. Si responde alguien mayor (<code>OK</code>), <code>P</code> se retira y ese sigue la elección. Contras: en sistemas grandes genera muchos mensajes; un proceso de ID alto que falla puede reiniciar la elección repetidamente.</li>
+          <li><strong>Ring:</strong> el que nota la caída crea un mensaje <code>ELECTION</code> con su ID y lo pasa a su sucesor; cada uno <strong>agrega su ID</strong> y reenvía. Cuando el mensaje completa la vuelta, el de <strong>mayor ID de la lista</strong> es el nuevo coordinador (se anuncia con <code>COORDINATOR</code>). Contras: latencia lineal con el número de procesos; requiere el anillo operativo.</li>
+        </ul>
+
+        <p class="exam-answer"><strong>En el final:</strong> comparar los tres algoritmos de exclusión mutua (centralizado = simple pero SPOF; Ricart-Agrawala = sin coordinador pero N² mensajes; token ring = justo pero con latencia) y saber que Bully y Ring siempre eligen al de mayor ID.</p>
+      </section>

@@ -1,0 +1,104 @@
+      <section class="chapter" id="correccion" data-title="correccion safety seguridad liveness vivacidad exclusion mutua ausencia deadlock starvation inanicion fairness equidad seccion critica busy wait espera activa race condition condicion de carrera comparar interbloqueo coffman">
+        <div class="chapter-head">
+          <div class="chapter-number">08</div>
+          <div><h2>Corrección: safety y liveness</h2></div>
+        </div>
+
+        <p>La corrección de un programa concurrente es difícil porque la salida puede depender del <strong>escenario</strong> de ejecución, no solo de la entrada. Se demuestra probando dos clases de propiedades:</p>
+        <div class="cmp two">
+          <div class="callout"><strong>Safety (seguridad):</strong> «algo malo <em>nunca</em> pasa». Debe ser verdadera <strong>siempre</strong>. Incluye <strong>exclusión mutua</strong> (dos procesos no intercalan ciertas subsecuencias, p. ej. tocar una variable compartida) y <strong>ausencia de deadlock</strong> (un sistema no finalizado siempre puede seguir productivamente).</div>
+          <div class="callout blue"><strong>Liveness (vivacidad):</strong> «algo bueno <em>eventualmente</em> pasa». Debe volverse verdadera en algún momento. Incluye <strong>ausencia de starvation</strong> (todo proceso listo para usar un recurso eventualmente lo recibe) y <strong>fairness</strong> (si una instrucción está continuamente habilitada, eventualmente aparece en el escenario).</div>
+        </div>
+
+        <h3>Los cuatro problemas a comparar (pregunta de final)</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Fenómeno</th><th>Qué es</th><th>¿El sistema avanza?</th><th>Causa / arreglo</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Busy-wait</strong> (espera activa)</td><td>Un proceso <em>gira</em> en un loop chequeando una condición y <strong>consume CPU</strong> sin trabajo útil.</td><td>Sí, pero desperdicia CPU</td><td>Reemplazar el spin por bloqueo real (semáforo, condvar, <code>park</code>) o al menos ceder CPU.</td></tr>
+              <tr><td><strong>Race condition</strong> (carrera)</td><td>El resultado depende del <em>timing</em> de accesos <strong>no sincronizados</strong> a estado compartido.</td><td>Sí, pero da resultados incorrectos/no deterministas</td><td>Serializar el acceso (lock/semáforo/actor).</td></tr>
+              <tr><td><strong>Deadlock</strong> (interbloqueo)</td><td>Dos+ procesos se esperan mutuamente por recursos que el otro tiene; <strong>ninguno</strong> avanza.</td><td>No (se traba todo)</td><td>Romper una condición de Coffman (p. ej. ordenar la toma de recursos).</td></tr>
+              <tr><td><strong>Starvation</strong> (inanición)</td><td>Un proceso listo <strong>nunca</strong> obtiene el recurso porque otros lo acaparan.</td><td>Sí, pero ese proceso queda afuera</td><td>Política <em>fair</em> (colas FIFO, envejecimiento).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warning"><strong>Distinción fina que piden:</strong> deadlock ≠ starvation. En deadlock <em>nadie</em> avanza (falla de safety/liveness global); en starvation el sistema <em>sí</em> progresa pero un proceso concreto es postergado para siempre (falla de liveness individual). Un busy-wait puede <em>funcionar</em> pero es «espera activa» que quema CPU; una race puede dar el resultado correcto por casualidad en algunas corridas y mal en otras.</div>
+
+        <p><strong>Condiciones de Coffman</strong> (las cuatro que deben darse juntas para un deadlock): exclusión mutua, <em>hold &amp; wait</em> (retener y esperar), <em>no preemption</em> (no expropiación) y <strong>espera circular</strong>. Basta impedir una para prevenirlo.</p>
+
+        <h3>Sección crítica (SC)</h3>
+        <p>Una <strong>sección crítica</strong> es un bloque donde los procesos acceden a recursos compartidos. El <strong>problema de la sección crítica</strong> exige:</p>
+        <ul class="study-list">
+          <li><strong>Exclusión mutua:</strong> las instrucciones de la SC no se intercalan (a lo sumo un proceso adentro).</li>
+          <li><strong>Ausencia de deadlock:</strong> si dos intentan entrar, al menos uno lo logra eventualmente.</li>
+          <li><strong>Ausencia de starvation:</strong> si un proceso intenta entrar, eventualmente entra.</li>
+          <li><strong>Progreso:</strong> la SC debe avanzar y finalizar (nadie se queda adentro para siempre).</li>
+        </ul>
+
+        <h3>¿Es un busy-wait? (patrón de parcial)</h3>
+        <p>La clave: ¿el loop <strong>cede la CPU</strong> (sleep/yield/bloqueo) o <strong>gira sin hacer nada útil</strong>?</p>
+        <div class="cmp two">
+          <div class="callout"><strong>NO es busy-wait</strong> si entre intento e intento hay <code>thread::sleep</code>, si se bloquea en un lock/semáforo, o si en cada vuelta hace <em>trabajo útil</em> (p. ej. minar y escribir un resultado, reintentar una conexión con espera).</div>
+          <div class="callout danger"><strong>SÍ es busy-wait</strong> si es un <code>loop { if cond { break } }</code> apretado que revisa una condición sin dormir ni bloquear: gasta 100% de CPU esperando.</div>
+        </div>
+        <pre data-code="rust">// NO es busy-wait: hace trabajo y cede CPU con sleep
+loop {
+    let mined = rng.gen();
+    *mineral.write().unwrap() += mined;            // trabajo útil
+    thread::sleep(Duration::from_millis(delay));   // cede la CPU
+}
+
+// SÍ es busy-wait: gira sin ceder ni producir nada
+loop {
+    if *listo.lock().unwrap() { break; }           // spin apretado -> quema CPU
+}</pre>
+
+        <p class="exam-answer"><strong>En el final:</strong> «explicar y comparar busy-wait, deadlock, race condition y starvation». Ejes para ordenar la respuesta: (1) ¿consume CPU inútilmente? → busy-wait; (2) ¿resultado depende del timing? → race; (3) ¿todos trabados esperándose? → deadlock; (4) ¿uno queda postergado para siempre mientras el resto avanza? → starvation.</p>
+      </section>
+
+      <section class="chapter" id="locks" data-title="locks cerraduras lock unlock exclusion mutua unix advisory shared exclusive read write fcntl flock lockf rwlock rust guard raii drop poisoned lock envenenado mutex send sync">
+        <div class="chapter-head">
+          <div class="chapter-number">09</div>
+          <div><h2>Locks y RwLock</h2></div>
+        </div>
+
+        <p>Los <strong>locks (cerraduras)</strong> implementan exclusión mutua entre procesos. Se usan con una variable de tipo lock que guarda su estado:</p>
+        <ul class="study-list">
+          <li><code>lock()</code>: el proceso <strong>se bloquea</strong> hasta poder obtener el lock.</li>
+          <li><code>unlock()</code>: libera el lock previamente tomado.</li>
+          <li>Requieren soporte de <strong>hardware y sistema operativo</strong> (instrucciones atómicas tipo <em>test-and-set</em>).</li>
+        </ul>
+
+        <h3>Locks en Unix</h3>
+        <ul class="study-list">
+          <li>Son <strong>advisory</strong> (consultivos): los procesos <em>pueden</em> ignorarlos; funcionan solo si todos cooperan. Sirven para sincronizar acceso a archivos o cualquier recurso.</li>
+          <li><strong>Shared locks (lectura):</strong> varios procesos pueden tenerlo simultáneamente.</li>
+          <li><strong>Exclusive locks (escritura):</strong> uno solo a la vez, bloquea a todos.</li>
+          <li>Para tomar un <em>shared</em> hay que esperar que se liberen todos los <em>exclusive</em>; para un <em>exclusive</em>, que se liberen <strong>todos</strong> (de ambos tipos).</li>
+          <li>Se aplican abriendo el archivo y usando <code>fcntl()</code>, <code>flock()</code> o <code>lockf()</code>.</li>
+        </ul>
+
+        <h3>RwLock en Rust (<code>std::sync::RwLock</code>)</h3>
+        <p>Provee locks <strong>compartidos (lectura)</strong> y <strong>exclusivos (escritura)</strong>; la política concreta depende del SO. Para compartir <code>T</code> entre threads, <code>T</code> debe ser <code>Send</code>, y para permitir lectores concurrentes, <code>Sync</code>.</p>
+        <ul class="study-list">
+          <li><code>read()</code>: bloquea hasta obtener lock de lectura (puede haber otros lectores).</li>
+          <li><code>write()</code>: bloquea hasta obtener lock de escritura (no puede haber ningún otro lock).</li>
+          <li>Ambos devuelven un <strong>guard</strong> que libera el lock <strong>automáticamente</strong> al salir de scope (patrón RAII, trait <code>Drop</code>).</li>
+        </ul>
+        <pre data-code="rust">use std::sync::RwLock;
+
+let datos = RwLock::new(vec![1, 2, 3]);
+{
+    let r1 = datos.read().unwrap();   // varios lectores a la vez
+    let r2 = datos.read().unwrap();
+    println!("{} {}", r1.len(), r2.len());
+} // se liberan los guards de lectura
+{
+    let mut w = datos.write().unwrap(); // acceso exclusivo
+    w.push(4);
+} // se libera el guard de escritura (Drop)</pre>
+        <div class="callout danger"><strong>Locks envenenados (poisoned):</strong> si un thread que tomó el lock de forma <em>exclusiva</em> hace <code>panic!</code> mientras lo tiene, el lock queda <strong>envenenado</strong>: las llamadas posteriores a <code>read()</code>/<code>write()</code> devuelven <code>Err</code>. Es la razón por la que en Rust casi siempre ves <code>.lock().unwrap()</code>: estás propagando (o manejando) ese posible envenenamiento.</div>
+        <p><strong>Mutex</strong> es el caso exclusivo puro (equivalente a un lock de escritura o semáforo binario). El patrón para mutar estado compartido entre hilos es <code>Arc&lt;Mutex&lt;T&gt;&gt;</code> (compartir + serializar).</p>
+
+        <p class="exam-answer"><strong>En el final:</strong> diferencia shared vs exclusive, por qué los locks de Unix son <em>advisory</em>, y el patrón RAII: el guard libera solo → menos bugs de «me olvidé el <code>unlock()</code>». Mencionar poisoning como propiedad de seguridad de Rust.</p>
+      </section>

@@ -1,0 +1,144 @@
+      <section class="chapter" id="mensajes" data-title="pasaje de mensajes canales channels sender receiver mpsc selective input pipes fifo colas mensajes rpc marshalling stub modelo de actores hewitt erlang actix mailbox direccion address contexto arbiter ciclo de vida started running stopping stopped do_send try_send send handler message restaurante">
+        <div class="chapter-head">
+          <div class="chapter-number">07</div>
+          <div><h2>Mensajes, canales y modelo de actores</h2></div>
+        </div>
+
+        <div class="callout"><strong>Principio fundamental:</strong> «No comunicarse compartiendo memoria; en cambio, compartir memoria comunicándose.» En vez de que varios toquen el mismo dato (y haya que serializar con locks), un único dueño posee el dato y los demás le mandan mensajes.</div>
+
+        <h3>Modelos de comunicación</h3>
+        <ul class="study-list">
+          <li><strong>Sincrónica:</strong> el emisor <em>espera</em> a que el receptor esté listo para recibir (rendezvous).</li>
+          <li><strong>Asincrónica (buffer):</strong> los mensajes se guardan en un buffer; el emisor sigue sin esperar al receptor.</li>
+          <li><strong>Direccionamiento:</strong> <em>simétrico</em> (emisor y receptor se conocen), <em>asimétrico</em> (el emisor conoce al receptor pero no al revés), <em>sin direccionamiento</em> (matcheo por estructura del mensaje).</li>
+          <li><strong>Flujo de datos:</strong> unidireccional o bidireccional.</li>
+        </ul>
+
+        <h3>Canales (channels)</h3>
+        <p>Un <strong>canal</strong> conecta un proceso emisor con uno receptor. Propiedades:</p>
+        <ul class="study-list">
+          <li>Tienen <strong>nombre</strong> y son <strong>tipados</strong>.</li>
+          <li>Pueden ser <strong>sincrónicos o asincrónicos</strong>.</li>
+          <li>Son <strong>unidireccionales</strong>.</li>
+          <li>Permiten <strong>múltiples productores para un solo consumidor</strong> (MPSC), clonando el extremo de envío.</li>
+          <li><strong>Transfieren la propiedad (ownership)</strong> del elemento enviado (encaja perfecto con Rust).</li>
+          <li><strong>Selective input:</strong> escuchar varios canales de forma bloqueante y desbloquearse con el primero que reciba un mensaje.</li>
+        </ul>
+        <pre data-code="rust">use std::sync::mpsc;   // multiple producer, single consumer
+use std::thread;
+
+let (tx, rx) = mpsc::channel();
+for id in 0..3 {
+    let tx = tx.clone();               // varios productores
+    thread::spawn(move || tx.send(format!("hola de {id}")).unwrap());
+}
+drop(tx);                              // cierro el original para que rx termine
+for msg in rx {                        // el consumidor itera hasta que se cierran todos los tx
+    println!("{msg}");
+}</pre>
+
+        <h3>Canales en Unix y RPC</h3>
+        <ul class="study-list">
+          <li><strong>Pipes y FIFOs:</strong> conectan dos procesos independientes, orientados a <em>bytes</em>. Los FIFOs tienen representación en el sistema de archivos.</li>
+          <li><strong>Colas de mensajes:</strong> orientadas a <em>mensajes</em> como unidades independientes.</li>
+          <li><strong>RPC (Remote Procedure Call):</strong> un cliente ejecuta funciones en un servidor de otro procesador. Requiere <strong>stubs</strong> en ambos extremos, <strong>localización</strong> del servicio y <strong>parameter marshalling</strong> (serializar argumentos/resultados).</li>
+        </ul>
+
+        <h3>Modelo de actores</h3>
+        <p>Desarrollado por <strong>Carl Hewitt (1973)</strong> y popularizado por <strong>Erlang</strong>. La primitiva es el <strong>actor</strong>: liviano (se crean miles, a diferencia de los threads), <strong>encapsula estado y comportamiento</strong>.</p>
+        <ul class="study-list">
+          <li><strong>Dirección (address):</strong> forma de enviarle mensajes al actor (puede ser remota en un sistema distribuido).</li>
+          <li><strong>Mailbox (casilla):</strong> un <strong>FIFO</strong> de los mensajes recibidos.</li>
+          <li>Un actor <strong>supervisor</strong> puede crear actores hijos.</li>
+          <li><strong>Aislados:</strong> no comparten memoria con otros actores; su estado privado <strong>solo se modifica procesando mensajes</strong> y procesan <strong>un mensaje a la vez</strong> (esto elimina las condiciones de carrera por diseño).</li>
+        </ul>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    P1["Actor A"] -->|"msg (async, inmutable)"| MB["Mailbox FIFO de B"]
+    P2["Actor C"] -->|msg| MB
+    MB --> B["Actor B: procesa 1 a la vez, muta su estado privado"]
+    B -->|"crea"| H["Actor hijo"]
+          </div>
+          <figcaption>Los actores solo se comunican por mensajes asincrónicos e inmutables; la mailbox serializa el acceso al estado sin locks explícitos.</figcaption>
+        </figure>
+
+        <h4>Mensajes en Actix</h4>
+        <p>Los mensajes son estructuras simples e <strong>inmutables</strong>, procesadas de forma <strong>asincrónica</strong>; deben implementar el trait <code>Message</code>, que define el tipo de retorno (<code>Message::Result</code>). Formas de envío:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Método</th><th>Comportamiento</th></tr></thead>
+            <tbody>
+              <tr><td><code>Addr::do_send(M)</code></td><td>Ignora errores y no retorna resultado; el mensaje se descarta si la casilla está cerrada.</td></tr>
+              <tr><td><code>Addr::try_send(M)</code></td><td>Intenta enviar ya; retorna <code>SendError</code> si la casilla está <em>llena</em> o cerrada.</td></tr>
+              <tr><td><code>Addr::send(M)</code></td><td>Retorna un <code>Future</code> con el <strong>resultado</strong> del manejo del mensaje.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="study-list">
+          <li><strong>Contexto:</strong> estado interno de ejecución del actor; le permite conocer su propia dirección, cambiar el límite de su mailbox o detenerse.</li>
+          <li><strong>Arbiter:</strong> provee el contexto de ejecución asincrónica; aloja el entorno del actor creando threads del SO y corriendo <em>event loops</em>.</li>
+        </ul>
+
+        <h4>Ciclo de vida de un actor (Actix)</h4>
+        <figure class="diagram">
+          <div class="mermaid">
+stateDiagram-v2
+    [*] --> Started: started() — contexto disponible
+    Started --> Running: estado normal (puede ser indefinido)
+    Running --> Stopping: Context::stop() / sin addr que lo referencien / sin objetos en el contexto
+    Stopping --> Running: stopping() devuelve Running (se reanuda)
+    Stopping --> Stopped: stopped() — último estado
+    Stopped --> [*]
+          </div>
+          <figcaption><strong>Started</strong> (se llama <code>started()</code>, ya hay contexto) → <strong>Running</strong> → <strong>Stopping</strong> (al llamar <code>Context::stop()</code>, o si nadie tiene su dirección, o si no quedan objetos registrados en el contexto) → <strong>Stopped</strong>.</figcaption>
+        </figure>
+
+        <pre data-code="rust">use actix::prelude::*;
+
+// Mensaje inmutable con su tipo de resultado
+#[derive(Message)]
+#[rtype(result = "usize")]
+struct Sumar(usize, usize);
+
+struct Calculadora { hechas: usize }        // estado privado
+
+impl Actor for Calculadora {
+    type Context = Context<Self>;
+    fn started(&mut self, _ctx: &mut Self::Context) {
+        println!("actor iniciado");         // ciclo de vida: Started
+    }
+}
+
+impl Handler<Sumar> for Calculadora {
+    type Result = usize;
+    fn handle(&mut self, msg: Sumar, _ctx: &mut Context<Self>) -> usize {
+        self.hechas += 1;                    // un mensaje a la vez: sin data races
+        msg.0 + msg.1
+    }
+}
+
+#[actix::main]
+async fn main() {
+    let addr = Calculadora { hechas: 0 }.start();   // Addr del actor
+    let r = addr.send(Sumar(2, 3)).await.unwrap();  // send -> Future con el resultado
+    println!("{r}");                                 // 5
+}</pre>
+
+        <h3>Diseñar un sistema con actores (patrón de examen)</h3>
+        <p>Los finales piden diseñar sistemas con actores definiendo, por cada entidad, su <strong>estado interno</strong> y los <strong>mensajes</strong> que intercambia. Ejemplo del <em>restaurante</em>: <strong>Cliente</strong>, <strong>Mozo</strong>, <strong>Cocinero</strong> y el <strong>Depósito</strong> (recurso de acceso exclusivo, de a uno).</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Actor</th><th>Estado interno</th><th>Mensajes que recibe / envía</th></tr></thead>
+            <tbody>
+              <tr><td>Cliente</td><td>mesa, pedido, si ya pagó</td><td>recibe <code>Atendido</code>, <code>PlatoListo</code>; envía <code>Pedir</code>, <code>PedirCuenta</code></td></tr>
+              <tr><td>Mozo</td><td>disponible/ocupado, mesas asignadas</td><td>recibe <code>Pedir</code>, <code>PlatoListo</code>, <code>PedirCuenta</code>; envía <code>NuevoPedido</code> a Cocina, <code>Atendido</code>/entrega al Cliente</td></tr>
+              <tr><td>Cocinero</td><td>pedido en preparación</td><td>recibe <code>NuevoPedido</code>; pide acceso al Depósito; al terminar envía <code>PlatoListo</code> al Mozo</td></tr>
+              <tr><td>Depósito</td><td>ocupado/libre (acceso exclusivo)</td><td>recibe <code>TomarIngredientes</code>/<code>Liberar</code> (serializa el acceso de a uno)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="exam-answer"><strong>En el final:</strong> «motivación del modelo de actores, características y ciclo de vida en Actix». Motivación: evitar el estado mutable compartido y sus locks; cada actor es dueño de su estado y solo cambia procesando mensajes (uno a la vez) → sin races por diseño, escala a miles de entidades livianas, encaja en sistemas distribuidos (dirección remota). Características: aislados, mailbox FIFO, mensajes asincrónicos e inmutables, supervisión. Ciclo: Started → Running → Stopping → Stopped.</p>
+      </section>

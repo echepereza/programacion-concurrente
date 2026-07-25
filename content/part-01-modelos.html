@@ -1,0 +1,187 @@
+      <section class="chapter" id="modelos" data-title="modelos de concurrencia estado mutable compartido fork join canales mensajes async actores cuando usar cada uno elegir modelo caso de uso cpu bound io bound renderizado vectorizacion nube palabras votacion cache api">
+        <div class="chapter-head">
+          <div class="chapter-number">04</div>
+          <div><h2>Panorama de modelos y cuándo usar cada uno</h2></div>
+        </div>
+
+        <p>Hay varios <strong>modelos de concurrencia</strong>; la habilidad que evalúan los parciales es <strong>elegir el correcto según el problema</strong>. Todos buscan lo mismo (aprovechar concurrencia sin romper la corrección) pero atacan la comunicación y la sincronización de forma distinta.</p>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Modelo</th><th>Idea</th><th>Cuándo brilla</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Estado mutable compartido</strong></td><td>Varios procesos acceden a los mismos datos; se <em>serializa</em> el acceso con locks para que solo una ejecución esté en la sección crítica.</td><td>Estado central que muchos leen/escriben: contadores, caché, buffers.</td></tr>
+              <tr><td><strong>Fork-Join / datos</strong></td><td>Dividir un cómputo en subtareas <em>independientes</em>, ejecutarlas en paralelo y unir (join) los resultados.</td><td>Cómputo <strong>CPU-bound</strong> y divisible: matrices, procesar N archivos, word count.</td></tr>
+              <tr><td><strong>Canales / mensajes</strong></td><td>Los procesos no comparten memoria; se comunican enviando mensajes por canales.</td><td>Pipelines productor-consumidor, transferir ownership de datos.</td></tr>
+              <tr><td><strong>Asincrónico (async/await)</strong></td><td>Un hilo atiende muchas tareas livianas que ceden control mientras esperan.</td><td><strong>I/O-bound</strong>: miles de conexiones, requests a APIs, servir HTTP.</td></tr>
+              <tr><td><strong>Actores</strong></td><td>Entidades aisladas con estado privado que se comunican <em>solo</em> por mensajes asincrónicos.</td><td>Dominio con muchas entidades con estado y lógica: juegos, chat, simulaciones.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout"><strong>Pregunta que decide casi todo: ¿el trabajo es CPU-bound o I/O-bound?</strong> Si el cuello de botella es <em>calcular</em> (CPU), querés paralelismo real (fork-join, threads, SIMD/GPU). Si el cuello de botella es <em>esperar</em> (red, disco), querés async (muchas esperas baratas en pocos hilos). Poner async a un cómputo pesado no acelera nada; poner mil threads a esperar red desperdicia memoria.</div>
+
+        <h3>Casos reales de parcial resueltos</h3>
+        <details>
+          <summary>«Renderizado de videos 3D en alta resolución, usando programación asincrónica»</summary>
+          <p><strong>Mala elección.</strong> El renderizado es <em>CPU-bound</em> intensivo. Async no ayuda: una tarea que computa sin llegar a un <code>await</code> no cede el control, así que no gana concurrencia y encima agrega complejidad. <strong>Usaría</strong> paralelismo de datos / fork-join sobre múltiples núcleos (Rayon), o directamente <strong>vectorización/GPU (CUDA)</strong>, que es exactamente el caso de «mismo cómputo sobre muchos píxeles independientes».</p>
+        </details>
+        <details>
+          <summary>«Nube de palabras desde la API de Twitter, usando barriers y mutex»</summary>
+          <p><strong>Elección subóptima.</strong> Traer tweets es <em>I/O</em> (mejor async o un pool de threads); contar palabras es un <strong>MapReduce / fork-join</strong> (map: contar por chunk; reduce: sumar). Sincronizar todo con <code>barriers + mutex</code> serializa de más e introduce contención innecesaria. <strong>Usaría</strong> async para las requests y fork-join/MapReduce para el conteo, combinando con <code>reduce</code>.</p>
+        </details>
+        <details>
+          <summary>«Votación en vivo para un concurso de TV, optimizada con Vectorización»</summary>
+          <p><strong>Mala elección.</strong> La vectorización (SIMD) sirve para aplicar <em>el mismo cálculo</em> a un gran vector de datos <em>independientes</em>; una votación es <strong>agregación concurrente con mucha escritura</strong> a contadores compartidos. <strong>Usaría</strong> estado mutable compartido con contadores atómicos / <code>Arc&lt;Mutex&gt;</code> por opción (o actores, uno por candidato), y async para recibir los votos entrantes.</p>
+        </details>
+        <details>
+          <summary>Mini-tabla de “qué modelo para…”</summary>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Caso</th><th>Modelo</th></tr></thead>
+            <tbody>
+              <tr><td>Cálculo de matrices para redes neuronales</td><td>Vectorización / SIMD / GPU (fork-join de datos)</td></tr>
+              <tr><td>Pedir a varias APIs y combinar el resultado</td><td>Async (lanzar futures y <code>join</code>)</td></tr>
+              <tr><td>Leer el log de una página muy visitada</td><td>Async (I/O) o lector-escritor con <code>RwLock</code></td></tr>
+              <tr><td>Backend de un videojuego</td><td>Actores (una entidad = un actor)</td></tr>
+              <tr><td>Convertir muchos .DOC a .PDF</td><td>Fork-join / pool de threads (CPU-bound, independiente)</td></tr>
+              <tr><td>Backend de Menti/Kahoot competitivo</td><td>Actores (estado por sala, mensajes)</td></tr>
+              <tr><td>Caché para reducir requests a la DB</td><td>Estado compartido con <code>RwLock</code> (muchas lecturas)</td></tr>
+              <tr><td>API HTTP que corre un modelo NLP</td><td>Async para servir + <code>spawn_blocking</code> para el cómputo</td></tr>
+            </tbody>
+          </table></div>
+        </details>
+
+        <p class="exam-answer"><strong>En el parcial:</strong> siempre justificar con <em>CPU-bound vs I/O-bound</em> y con «¿hay estado compartido que serializar o entidades que se comunican?». No basta nombrar el modelo: hay que dar ventaja y desventaja y decir cuál elegirías.</p>
+      </section>
+
+      <section class="chapter" id="forkjoin" data-title="fork join work stealing deque rayon crossbeam scope mapreduce word count dremel bigquery vectorizacion simd mmx sse avx neon cuda gpu ley de moore paralelismo de datos determinista">
+        <div class="chapter-head">
+          <div class="chapter-number">05</div>
+          <div><h2>Fork-Join y paralelismo de datos</h2></div>
+        </div>
+
+        <p><strong>Fork-Join</strong> es un estilo de paralelización donde un cómputo grande (<em>task</em>) se divide <strong>recursivamente</strong> en subtareas más chicas (<em>subtasks</em>) que se ejecutan en paralelo, y cuyos resultados se combinan (<strong>join</strong>) en la solución final.</p>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart TB
+    T["Tarea grande"] -->|fork| A["Sub 1"]
+    T -->|fork| B["Sub 2"]
+    T -->|fork| C["Sub 3"]
+    T -->|fork| D["Sub 4"]
+    A --> J["join: combinar resultados"]
+    B --> J
+    C --> J
+    D --> J
+    J --> R["Resultado final"]
+          </div>
+          <figcaption>Divide y vencerás en paralelo. Las subtareas son independientes; solo se bloquean para esperar a otras subtareas.</figcaption>
+        </figure>
+
+        <h3>Propiedades (¡esto se pregunta!)</h3>
+        <ul class="study-list">
+          <li><strong>Sin condiciones de carrera:</strong> las unidades de trabajo están <em>aisladas</em>.</li>
+          <li><strong>Determinístico:</strong> produce el mismo resultado sin importar las velocidades relativas de los threads.</li>
+          <li><strong>Threads aislados</strong> entre sí.</li>
+          <li><strong>Rendimiento:</strong> idealmente el tiempo secuencial se divide por el número de threads (limitado por el desbalance de tareas y el costo del <em>join</em>).</li>
+          <li><strong>Desventaja:</strong> exige que las unidades de trabajo sean aisladas (no sirve si hay mucho estado compartido).</li>
+        </ul>
+
+        <h3>Work stealing (robo de trabajo)</h3>
+        <p>Algoritmo de <em>scheduling</em> para balancear la carga entre workers: cada thread tiene su propia cola doble (<strong>deque</strong>). Cuando genera subtareas las apila al <strong>final</strong> de su cola; cuando se queda sin trabajo, <strong>roba</strong> tareas del <strong>inicio</strong> de la cola de otro thread (elegido al azar). Minimiza la sincronización entre workers y tiene bajo overhead.</p>
+
+        <h3>Implementaciones en Rust</h3>
+        <ul class="study-list">
+          <li><code>std::thread::spawn</code>: lanzar threads del SO manualmente.</li>
+          <li><strong>Rayon:</strong> paralelismo de datos casi gratis: convertir <code>iter()</code> en <code>par_iter()</code>. Internamente crea un worker por núcleo e implementa work stealing; combina con <code>reduce()</code> / <code>reduce_with()</code>.</li>
+          <li><strong>Crossbeam:</strong> estructuras y utilidades de concurrencia. <code>crossbeam::scope</code> crea un ámbito que garantiza que los threads terminen antes de que el closure retorne (permite prestar referencias del stack).</li>
+        </ul>
+        <pre data-code="rust">use rayon::prelude::*;
+
+// Secuencial -> paralelo con solo cambiar iter() por par_iter()
+let total: u64 = (0..1_000_000u64)
+    .into_par_iter()
+    .map(|x| x * x)
+    .reduce(|| 0, |a, b| a + b);   // reduce combina resultados parciales</pre>
+
+        <h3>MapReduce, Dremel y vectorización</h3>
+        <ul class="study-list">
+          <li><strong>MapReduce</strong> (Google, 2004): modelo para procesar grandes datasets. El usuario define <strong>map</strong> (procesa un par clave/valor y emite pares intermedios) y <strong>reduce</strong> (combina todos los valores de una misma clave). Su «Hello World» es el <strong>conteo de palabras (Word Count)</strong>.</li>
+          <li><strong>Dremel</strong>: consultas en tiempo casi real (expuesto como <em>BigQuery</em>); la consulta se «empuja» y reescribe por un árbol jerárquico y los resultados se ensamblan agregando las respuestas de los niveles inferiores.</li>
+          <li><strong>Vectorización (SIMD, <em>Single Instruction, Multiple Data</em>)</strong>: aplicar el mismo cómputo simple a muchos datos independientes a la vez. Ante la ralentización de la <strong>Ley de Moore</strong>, los transistores extra se usaron en varias ALUs sobre los mismos registros → instrucciones SIMD (MMX/SSE/AVX en x86, NEON en ARM). Los registros son vectores de tamaño fijo (128–512 bits) divididos en <strong>carriles (lanes)</strong>. Operaciones «verticales» (entre registros, mismo carril: <code>x0+y0</code>) son eficientes; las «horizontales» (reducir un vector a un escalar: <code>x0+x1+x2+x3</code>) son más lentas. Ideal para sonido, imágenes, video y entrenar redes neuronales.</li>
+          <li><strong>CUDA</strong>: estándar de facto de NVIDIA para GPUs; modela «threads» en bloques que operan sobre porciones de memoria independientes (direccionables en 1D/2D/3D), permitiendo miles de threads concurrentes.</li>
+        </ul>
+
+        <p class="exam-answer"><strong>En el final:</strong> propiedades de fork-join (determinístico, sin races, aislado), qué es work stealing (deque, robar del inicio de otra cola) y por qué SIMD/GPU sirven para «mismo cómputo sobre muchos datos independientes» y no para lógica con estado compartido.</p>
+      </section>
+
+      <section class="chapter" id="async" data-title="programacion asincronica async await futures poll ready pending modelo pinata executor block_on spawn spawn_local spawn_blocking yield_now pin unpin tokio async-std runtime io bound cpu bound functor monad join reactor cooperativo">
+        <div class="chapter-head">
+          <div class="chapter-number">06</div>
+          <div><h2>Programación asincrónica (async/await)</h2></div>
+        </div>
+
+        <p>Las <strong>tareas asincrónicas</strong> permiten manejar concurrencia de forma mucho más liviana que los threads, sobre todo para <strong>operaciones de E/S</strong>. <strong>El problema de los threads:</strong> si una app crea muchísimos threads, la memoria de sus <em>stacks</em> (p. ej. ~100 KB c/u) se vuelve un problema. Las tareas async son mucho más livianas (miles o decenas de miles), más rápidas de crear y con menor overhead de memoria; un hilo puede tomar otras tareas mientras una espera que se complete una llamada al sistema.</p>
+
+        <h3>Futures y el modelo piñata</h3>
+        <p>Un <strong><code>Future</code></strong> (trait <code>std::future::Future</code>) representa una operación que se puede <em>probar</em> si terminó, mediante <code>poll</code>:</p>
+        <ul class="study-list">
+          <li><code>poll</code> <strong>nunca bloquea</strong>. Si la operación terminó retorna <code>Poll::Ready(out)</code>; si no, <code>Poll::Pending</code>.</li>
+          <li>El future almacena todo lo necesario para hacer el pedido y <strong>el punto donde retomar</strong> en el próximo <code>poll</code>, más su estado local.</li>
+          <li>Se llama a <code>poll</code> <strong>solo cuando es probable que la tarea progrese</strong> (lo decide el runtime, avisado por el reactor de E/S).</li>
+        </ul>
+        <div class="callout"><strong>Modelo piñata:</strong> al <code>Future</code> «se lo golpea» con <code>poll</code> hasta que <em>cae</em> el valor. Es <strong>cooperativo</strong>: la tarea solo cede control en los puntos <code>await</code>; nadie la interrumpe por la fuerza.</div>
+
+        <figure class="diagram">
+          <div class="mermaid">
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Pending: poll() -> aún no listo
+    Pending --> Ready: poll() -> Poll::Ready(out)
+    Ready --> [*]: devuelve el valor
+          </div>
+          <figcaption>El executor pollea el future; mientras esté <code>Pending</code> lo deja «dormido» y atiende otras tareas; cuando el reactor avisa que puede progresar, lo vuelve a pollear.</figcaption>
+        </figure>
+
+        <h3>Funciones <code>async</code> y expresiones <code>await</code></h3>
+        <ul class="study-list">
+          <li>Invocar una función <code>async</code> <strong>retorna inmediatamente un <code>Future</code></strong>, <em>antes</em> de ejecutar el cuerpo. El future contiene argumentos, variables locales, etc.</li>
+          <li>La <strong>primera vez que se pollea</strong>, el cuerpo corre hasta el primer <code>await</code>.</li>
+          <li><code>await</code> toma la propiedad del <code>Future</code> interno y lo pollea: si está <code>Ready</code>, sigue con su valor; si está <code>Pending</code>, la función que espera también retorna <code>Pending</code> (propaga la suspensión).</li>
+          <li><code>await</code> solo puede usarse dentro de funciones <code>async</code>.</li>
+        </ul>
+        <pre data-code="rust">async fn bajar(url: &str) -> String { /* ... */ }
+
+async fn combinar() -> usize {
+    // Se lanzan los dos futures y se esperan concurrentemente con join.
+    let (a, b) = futures::join!(bajar("api/1"), bajar("api/2"));
+    a.len() + b.len()
+}</pre>
+
+        <h3>Executors y runtimes</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Primitiva</th><th>Qué hace</th></tr></thead>
+            <tbody>
+              <tr><td><code>block_on(fut)</code></td><td>Función <strong>sincrónica</strong> que espera el valor final de un future: adapta el mundo async al sync. <strong>No usar dentro de un <code>async</code></strong> (bloquearía todo el thread).</td></tr>
+              <tr><td><code>spawn_local(fut)</code></td><td>Agrega el future a un pool que se pollea en el <code>block_on</code> (análogo a <code>spawn</code> de threads, mismo hilo).</td></tr>
+              <tr><td><code>spawn(fut)</code></td><td>Crea la tarea y la coloca en el pool de threads dedicado a pollear futures; no necesita <code>block_on</code>.</td></tr>
+              <tr><td><code>spawn_blocking(f)</code></td><td>Manda la tarea a <strong>otro thread del SO</strong> para cómputo pesado o bloqueante, sin frenar el executor.</td></tr>
+              <tr><td><code>yield_now()</code></td><td>Cede voluntariamente el control a otra tarea (favorece el paralelismo cooperativo).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Un <strong>runtime</strong> (Tokio, async-std) trae el <strong>executor</strong> (traduce <code>await</code> en llamadas a <code>poll</code> y gestiona hilos) más bibliotecas de E/S asincrónica, timers, locks y canales.</p>
+
+        <h3>Pin y Unpin (por qué existen)</h3>
+        <p>Los tipos autogenerados de <code>async</code> que implementan <code>Future</code> guardan <strong>referencias a sí mismos</strong> (self-references) para recordar dónde retomar. Si se <em>movieran</em> en memoria, esas referencias internas quedarían colgadas. <code>Pin&lt;T&gt;</code> «clava» un valor <code>!Unpin</code> para impedir que se mueva. Por defecto casi todos los tipos son <code>Unpin</code>.</p>
+
+        <h3>Cuándo (y cuándo no) usar async</h3>
+        <div class="cmp two">
+          <div class="callout"><strong>Sí:</strong> tareas <strong>I/O-intensivas</strong> —consultar servicios externos, leer archivos, servir requests HTTP— donde la mayor parte del tiempo se <em>espera</em>.</div>
+          <div class="callout danger"><strong>No:</strong> cómputo <strong>CPU-intensivo</strong> (factoriales, producto de matrices). Un cómputo grande dentro de un <code>async</code> no llega a un <code>await</code> y por lo tanto <strong>no cede el control</strong> a otras tareas → mata la concurrencia. Para eso, <code>spawn_blocking</code> o fork-join.</div>
+        </div>
+        <p>Dato fino: los futures son <strong>functors</strong> (se pueden <code>map</code>) y <strong>monads</strong> (se pueden <code>flatten</code>), y se encadenan/combinan con <code>join</code>.</p>
+
+        <p class="exam-answer"><strong>Trampas de V/F frecuentes:</strong> «El que hace poll es el thread principal» → <em>Falso</em>, lo hace el <strong>executor/runtime</strong>. «poll se llama solo cuando la tarea puede progresar» → <em>Verdadero</em>. «El modelo piñata es colaborativo» → <em>Verdadero</em> (cooperativo). «La operación async inicia al llamar a la función <code>async</code>» → <em>Falso</em>: al invocarla solo se crea el <code>Future</code>; recién arranca al primer <code>poll</code>/<code>await</code>.</p>
+      </section>

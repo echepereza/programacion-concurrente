@@ -1,0 +1,197 @@
+      <header class="hero">
+        <h1>Programación Concurrente</h1>
+        <p>Guía completa para el final de FIUBA: teoría, diagramas interactivos, problemas clásicos y los finales reales resueltos. <a href="resumen.html">Abrir resumen imprimible</a>.</p>
+        <p><span class="tag">Rust</span> <span class="tag blue">Actix</span> <span class="tag warm">Redes de Petri</span> <span class="tag red">Distribuidos</span></p>
+      </header>
+
+      <section class="chapter" id="fundamentos" data-title="concurrencia paralelismo programa proceso thread hilo multitasking multithreading instruccion atomica intercalacion interleaving no determinismo sincronizacion comunicacion orden causal">
+        <div class="chapter-head">
+          <div class="chapter-number">01</div>
+          <div><h2>Qué es la concurrencia</h2></div>
+        </div>
+
+        <p>La <strong>programación concurrente</strong> estudia la ejecución de <strong>múltiples tareas o procesos de forma simultánea</strong>, que interactúan entre sí compartiendo recursos o intercambiando datos. El desafío central no es que las tareas corran: es que <strong>interactúen correctamente</strong> sin importar el orden en que el sistema decida ejecutarlas.</p>
+
+        <h3>Vocabulario base</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Término</th><th>Definición</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Programa</strong></td><td>Conjunto de datos, asignaciones e instrucciones de control de flujo que se compilan a instrucciones de máquina y se ejecutan <em>secuencialmente</em> en un procesador, accediendo a memoria.</td></tr>
+              <tr><td><strong>Programa concurrente</strong></td><td>Conjunto de programas secuenciales que <em>pueden</em> ejecutarse en paralelo.</td></tr>
+              <tr><td><strong>Proceso</strong></td><td>Cada uno de los programas secuenciales que componen un programa concurrente.</td></tr>
+              <tr><td><strong>Sistema paralelo</strong></td><td>Sistema con varios programas ejecutándose <em>simultáneamente en procesadores distintos</em>.</td></tr>
+              <tr><td><strong>Multitasking</strong></td><td>Ejecución de múltiples procesos concurrentemente en un período de tiempo, coordinada por el <strong>scheduler</strong> del sistema operativo para el acceso a los procesadores.</td></tr>
+              <tr><td><strong>Multithreading</strong></td><td>Construcción del lenguaje que permite la ejecución concurrente de <strong>threads</strong> (hilos) dentro del mismo programa.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Concurrencia no es lo mismo que paralelismo</h3>
+        <div class="cmp two">
+          <div class="callout"><strong>Concurrencia</strong> = tratar con varias tareas <em>a la vez</em> (estructura del programa). Existe aunque haya <strong>una sola CPU</strong>: el scheduler intercala las tareas. Es una propiedad del <em>diseño</em>.</div>
+          <div class="callout blue"><strong>Paralelismo</strong> = ejecutar varias tareas <em>físicamente al mismo tiempo</em> en varios núcleos. Requiere hardware con múltiples procesadores. Es una propiedad de la <em>ejecución</em>.</div>
+        </div>
+        <p>Un programa concurrente <em>puede</em> correr en paralelo si hay hardware, pero la concurrencia se define por cómo está estructurado, no por cuántos núcleos haya.</p>
+
+        <h3>Instrucción atómica e intercalación</h3>
+        <p>Una <strong>instrucción atómica</strong> se ejecuta de principio a fin sin interrupciones, o no se ejecuta en absoluto. La idea más importante del cuatrimestre:</p>
+        <div class="callout warning"><strong>La ejecución de un programa concurrente es una secuencia de instrucciones atómicas obtenida al <em>intercalar arbitrariamente</em> (interleaving) las instrucciones de sus procesos componentes.</strong></div>
+        <p>El orden interno de cada proceso se respeta (<strong>orden causal</strong>), pero el sistema puede entrelazar las instrucciones de distintos procesos de <em>cualquier</em> manera. Por eso un mismo programa tiene <strong>muchas ejecuciones posibles</strong>: la salida puede depender del <em>escenario</em> de ejecución y no solo de la entrada. Esto es el <strong>no determinismo</strong> y es la raíz de casi todos los bugs de concurrencia.</p>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    subgraph T1["Proceso 1 — orden causal"]
+      direction LR
+      A1["Ia"] --> A2["Ib"] --> A3["Ic"]
+    end
+    subgraph T2["Proceso 2 — orden causal"]
+      direction LR
+      B1["I1"] --> B2["I2"]
+    end
+    A3 -. "scheduler" .-> R(["Una ejecución posible: Ia · I1 · Ib · I2 · Ic"])
+    B2 -. "intercala" .-> R
+          </div>
+          <figcaption>Cada proceso respeta su orden interno (Ia→Ib→Ic y I1→I2); el interleaving entre procesos es arbitrario. Otras ejecuciones válidas: «Ia·Ib·I1·Ic·I2», «Ia·I1·I2·Ib·Ic», etc. Verificar un programa concurrente es razonar sobre <em>todas</em> las intercalaciones posibles.</figcaption>
+        </figure>
+
+        <h3>Los dos desafíos: sincronización y comunicación</h3>
+        <ul class="study-list">
+          <li><strong>Sincronización:</strong> coordinación <em>temporal</em> entre procesos (quién puede avanzar y cuándo; garantizar exclusión mutua, orden, esperar condiciones).</li>
+          <li><strong>Comunicación:</strong> intercambio de <em>datos</em> entre procesos para que el programa cumpla su función (memoria compartida o pasaje de mensajes).</li>
+        </ul>
+
+        <p class="exam-answer"><strong>En el final:</strong> «Definir programa concurrente, proceso e instrucción atómica» y «por qué la salida de un programa concurrente puede variar». Respuesta: porque la ejecución es una intercalación arbitraria de instrucciones atómicas; solo se preserva el orden causal de cada proceso, así que hay múltiples escenarios y la corrección debe valer en <em>todos</em>.</p>
+      </section>
+
+      <section class="chapter" id="threads" data-title="threads hilos procesos memoria compartida stack pc registros program counter estados proceso nuevo ready running waiting blocked finished scheduler tareas asincronicas verdadero falso">
+        <div class="chapter-head">
+          <div class="chapter-number">02</div>
+          <div><h2>Procesos, threads y estados</h2></div>
+        </div>
+
+        <h3>Qué comparte un thread y qué no</h3>
+        <p>Los <strong>threads</strong> comparten los recursos del proceso padre —el <strong>espacio de memoria</strong> (código, datos, archivos abiertos)—. Pero cada thread mantiene su propia <strong>información de estado</strong>: su <strong>pila (stack)</strong>, su <strong>contador de programa (PC)</strong> y sus <strong>registros</strong>.</p>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart TB
+    subgraph P1["Proceso single-thread"]
+      direction TB
+      C1["code / data / files (compartido)"]
+      R1["registros + stack"]
+      TH1(("thread"))
+      C1 --- R1 --- TH1
+    end
+    subgraph P2["Proceso multi-thread"]
+      direction TB
+      C2["code / data / files (compartido)"]
+      RA["registros + stack A"]
+      RB["registros + stack B"]
+      RC["registros + stack C"]
+      TA(("thread A"))
+      TB(("thread B"))
+      TC(("thread C"))
+      C2 --- RA --- TA
+      C2 --- RB --- TB
+      C2 --- RC --- TC
+    end
+          </div>
+          <figcaption>Todos los threads del proceso ven la misma memoria (por eso pueden pisarse: <em>estado mutable compartido</em>), pero cada uno lleva su propio stack, PC y registros.</figcaption>
+        </figure>
+
+        <h3>Proceso vs thread vs tarea asincrónica</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th></th><th>Proceso</th><th>Thread (hilo)</th><th>Tarea asincrónica</th></tr></thead>
+            <tbody>
+              <tr><td>Espacio de memoria</td><td>Propio, aislado</td><td>Compartido con el proceso</td><td>Compartido con el proceso</td></tr>
+              <tr><td>Stack propio</td><td>Sí</td><td>Sí</td><td>No en el sentido clásico: guarda su estado en el <em>Future</em>, no en un stack del SO dedicado</td></tr>
+              <tr><td>Lo planifica</td><td>Scheduler del SO</td><td>Scheduler del SO</td><td>El <strong>executor/runtime</strong> en espacio de usuario (cooperativo)</td></tr>
+              <tr><td>Costo de crear</td><td>Alto</td><td>Medio (~KB de stack c/u)</td><td>Muy bajo (miles/decenas de miles)</td></tr>
+              <tr><td>Cambio de contexto</td><td>Caro</td><td>Medio</td><td>Barato (no pasa por el kernel)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout danger"><strong>Trampas típicas de V/F (parcial):</strong> «Procesos, hilos y tareas async tienen espacios de memoria independientes» → <strong>Falso</strong> (los hilos y tareas comparten el del proceso). «El scheduler del SO puede pausar una tarea async puntual y habilitar otra del mismo proceso» → <strong>Falso</strong>: las tareas async son <em>cooperativas</em>, ceden control solo en un <code>await</code>; las maneja el executor, no el scheduler del SO.</div>
+
+        <h3>Estados de ejecución de un proceso</h3>
+        <figure class="diagram">
+          <div class="mermaid">
+stateDiagram-v2
+    [*] --> Nuevo
+    Nuevo --> Listo: admitido
+    Listo --> Ejecutando: scheduler asigna CPU
+    Ejecutando --> Listo: quantum agotado / preempt
+    Ejecutando --> Bloqueado: espera E/S o recurso
+    Bloqueado --> Listo: llega el evento
+    Ejecutando --> Finalizado: termina
+    Finalizado --> [*]
+          </div>
+          <figcaption>Un proceso pasa por Nuevo → Listo (ready) → Ejecutando (running) → puede bloquearse (waiting) por E/S o un recurso y volver a Listo → Finalizado (libera sus recursos y permite obtener su estado de finalización).</figcaption>
+        </figure>
+
+        <p class="exam-answer"><strong>En el final/parcial:</strong> distinguir con precisión qué comparte cada abstracción. Regla mnemotécnica: <em>proceso = casa propia; threads = compañeros de la misma casa con su propia pieza (stack); tareas async = threads muy livianos y cooperativos que guardan su “pieza” dentro del Future.</em></p>
+      </section>
+
+      <section class="chapter" id="rust" data-title="rust ownership pertenencia borrow prestamo move drop raii box rc arc mutex send sync traits memory safety data race zero cost abstractions dueño referencia mutable inmutable">
+        <div class="chapter-head">
+          <div class="chapter-number">03</div>
+          <div><h2>Rust: ownership y seguridad en concurrencia</h2></div>
+        </div>
+
+        <p><strong>Rust</strong> es el lenguaje de la materia. Se enfoca en <strong>velocidad, seguridad y concurrencia</strong>, con <em>abstracciones sin costo</em> (zero-cost abstractions): construcciones de alto nivel que no pagan overhead en runtime. Su promesa clave: es <strong>memory safe en tiempo de compilación</strong> —no hay <em>dangling pointers</em>— y <strong>previene las condiciones de carrera sobre los datos</strong> (data races) al usar concurrencia, sin costo en ejecución.</p>
+
+        <h3>Ownership (pertenencia): las reglas</h3>
+        <ul class="study-list">
+          <li>Cada valor tiene una variable que es su <strong>dueño (owner)</strong>.</li>
+          <li>Solo puede haber <strong>un único dueño a la vez</strong>; cambiar de dueño es un <strong>move</strong> (el anterior deja de ser válido).</li>
+          <li>El dueño puede <strong>prestar (borrow)</strong> el valor: o bien <strong>múltiples referencias inmutables</strong> (<code>&amp;T</code>), o bien <strong>una única referencia mutable</strong> (<code>&amp;mut T</code>) — nunca ambas a la vez.</li>
+          <li>Cuando el dueño sale de su <strong>ámbito (scope)</strong>, el valor se libera (<strong>drop</strong>).</li>
+          <li>Inspirado en <strong>RAII</strong> (<em>Resource Acquisition Is Initialization</em>): el recurso se adquiere al inicializar y se limpia solo al salir de scope.</li>
+        </ul>
+        <div class="callout"><strong>Por qué esto mata los data races:</strong> «múltiples lectores <em>o</em> un solo escritor, nunca las dos cosas» es exactamente la condición que evita una carrera de datos. El <em>borrow checker</em> la verifica en compilación, así que un data race clásico ni siquiera compila.</div>
+
+        <h3>Punteros inteligentes para el heap</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tipo</th><th>Para qué</th><th>Concurrencia</th></tr></thead>
+            <tbody>
+              <tr><td><code>Box&lt;T&gt;</code></td><td>Un único dueño de un valor en el heap.</td><td>Un solo hilo.</td></tr>
+              <tr><td><code>Rc&lt;T&gt;</code></td><td>Múltiples dueños compartidos (conteo de referencias) inmutables.</td><td><strong>Un solo hilo</strong> (el contador no es atómico).</td></tr>
+              <tr><td><code>Arc&lt;T&gt;</code></td><td><em>Atomic Rc</em>: múltiples dueños compartidos desde <strong>varios threads</strong>.</td><td>Seguro entre hilos (contador atómico).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Para <em>mutar</em> algo compartido entre hilos se combina <code>Arc</code> (compartir) con un lock (<code>Mutex</code> o <code>RwLock</code>) que serializa el acceso: el patrón <code>Arc&lt;Mutex&lt;T&gt;&gt;</code>.</p>
+
+        <pre data-code="rust">use std::sync::{Arc, Mutex};
+use std::thread;
+
+fn main() {
+    // Arc: compartir el dueño entre hilos. Mutex: serializar la mutación.
+    let contador = Arc::new(Mutex::new(0));
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        let contador = Arc::clone(&contador);   // clona el puntero, no el dato
+        let h = thread::spawn(move || {
+            let mut n = contador.lock().unwrap(); // adquiere el lock (RAII)
+            *n += 1;
+        }); // aquí el guard se dropea -> se libera el lock
+        handles.push(h);
+    }
+    for h in handles { h.join().unwrap(); }
+    println!("total = {}", *contador.lock().unwrap()); // 10, siempre
+}</pre>
+
+        <h3>Los traits <code>Send</code> y <code>Sync</code></h3>
+        <ul class="study-list">
+          <li><strong><code>Send</code>:</strong> la propiedad (ownership) del tipo <em>puede transferirse entre threads</em>. Casi todos los tipos son <code>Send</code>, <strong>excepto</strong> punteros raw y <code>Rc&lt;T&gt;</code>.</li>
+          <li><strong><code>Sync</code>:</strong> el tipo puede <em>referenciarse de forma segura desde varios threads</em>. Formalmente, <code>T</code> es <code>Sync</code> si <code>&amp;T</code> es <code>Send</code>. Los tipos primitivos y los compuestos por tipos <code>Sync</code> son automáticamente <code>Sync</code>.</li>
+        </ul>
+        <div class="callout blue">Estos traits son <em>marker traits</em>: el compilador los deduce. Si intentás mandar un <code>Rc</code> a otro thread, el error de compilación es «<code>Rc&lt;T&gt;</code> cannot be sent between threads safely»: te está diciendo que uses <code>Arc</code>.</div>
+
+        <p class="exam-answer"><strong>En el final:</strong> explicar cómo Rust previene condiciones de carrera. Idea a decir: las reglas de <em>ownership/borrowing</em> imponen «muchos <code>&amp;T</code> XOR un <code>&amp;mut T</code>» y se chequean en compilación; para compartir mutable entre hilos se usa <code>Arc&lt;Mutex&lt;…&gt;&gt;</code>; <code>Send</code>/<code>Sync</code> definen qué tipos son seguros de mover/compartir entre threads.</p>
+      </section>

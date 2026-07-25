@@ -1,0 +1,137 @@
+      <section class="chapter" id="sockets" data-title="sockets cliente servidor stream datagram raw sequenced packet tcp udp iterativo concurrente bind listen accept connect send recv sendto recvfrom socket close tcplistener tcpstream rust incoming shutdown flush middleware tres niveles">
+        <div class="chapter-head">
+          <div class="chapter-number">16</div>
+          <div><h2>Sockets y modelo cliente-servidor</h2></div>
+        </div>
+
+        <p>Un <strong>socket</strong> es una interfaz que permite la comunicación entre dos procesos, en la misma máquina o en máquinas distintas. Es la base del <strong>modelo cliente-servidor</strong>: el <strong>cliente</strong> es el proceso <em>activo</em> que inicia la interacción; el <strong>servidor</strong> es el <em>pasivo</em> que espera y responde.</p>
+        <ul class="study-list">
+          <li><strong>Arquitecturas:</strong> de <em>dos niveles</em> (cliente ↔ servidor) o de <em>tres niveles</em> (con un <strong>middleware</strong> entre medio que aporta seguridad y balanceo de carga).</li>
+          <li><strong>Tipos de servidor:</strong> <em>iterativo</em> (atiende una petición a la vez) o <em>concurrente</em> (atiende varias simultáneamente, típicamente un thread/tarea por conexión).</li>
+        </ul>
+
+        <h3>Tipos de sockets</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tipo</th><th>Protocolo</th><th>Característica</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Stream</strong></td><td>TCP</td><td>Entrega garantizada del flujo de bytes, con control de errores y de flujo.</td></tr>
+              <tr><td><strong>Datagram</strong></td><td>UDP</td><td>Sin conexión; la entrega <em>no</em> está garantizada.</td></tr>
+              <tr><td><strong>Raw</strong></td><td>IP</td><td>Permiten enviar paquetes IP directamente.</td></tr>
+              <tr><td><strong>Sequenced Packet</strong></td><td>SPP</td><td>Como stream pero preservan los delimitadores de registro.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Llamadas al sistema y flujo</h3>
+        <figure class="diagram">
+          <div class="mermaid">
+sequenceDiagram
+    participant S as Servidor
+    participant C as Cliente
+    S->>S: socket()
+    S->>S: bind() (IP:puerto)
+    S->>S: listen()
+    C->>C: socket()
+    C->>S: connect()
+    S->>S: accept() (bloquea hasta conexión)
+    C->>S: write() / send()
+    S->>C: read() / recv() -> procesa -> write()
+    C->>S: close()
+    S->>S: close()
+          </div>
+          <figcaption>El servidor hace <code>socket → bind → listen → accept</code> (accept bloquea hasta que llega una conexión); el cliente hace <code>socket → connect</code>. Luego intercambian datos con <code>read/write</code> (o <code>send/recv</code> para stream, <code>sendto/recvfrom</code> para datagram) y cierran con <code>close</code>.</figcaption>
+        </figure>
+
+        <h3>Sockets en Rust (<code>std::net</code>)</h3>
+        <pre data-code="rust">use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::thread;
+
+// Servidor concurrente: un thread por conexión
+fn servidor() -> std::io::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:8080")?;   // bind + listen
+    for stream in listener.incoming() {                    // iterador de conexiones
+        let mut stream = stream?;                          // = accept()
+        thread::spawn(move || {
+            let mut buf = [0u8; 512];
+            let n = stream.read(&mut buf).unwrap();        // Read trait
+            stream.write_all(&buf[..n]).unwrap();          // eco
+            stream.flush().unwrap();
+        });
+    }
+    Ok(())
+}
+
+// Cliente
+fn cliente() -> std::io::Result<()> {
+    let mut stream = TcpStream::connect("127.0.0.1:8080")?; // connect
+    stream.write_all(b"hola")?;
+    let mut resp = String::new();
+    stream.read_to_string(&mut resp)?;
+    Ok(()) // al salir de scope, drop(stream) inicia el cierre TCP
+}</pre>
+        <p><code>TcpStream</code> implementa <code>Read</code> y <code>Write</code>; <code>flush()</code> fuerza el envío del buffer; la conexión se cierra al hacer <strong>drop</strong> del stream (o explícitamente con <code>shutdown()</code>, que puede cerrar el extremo de lectura, de escritura o ambos).</p>
+
+        <p class="exam-answer"><strong>En el final:</strong> distinguir stream (TCP, confiable) vs datagram (UDP, no confiable), servidor iterativo vs concurrente, y el orden de syscalls del lado servidor (<code>bind → listen → accept</code>) vs cliente (<code>connect</code>).</p>
+      </section>
+
+      <section class="chapter" id="ambientes" data-title="ambientes distribuidos entidad capacidades reactiva evento externo mensaje timer impulso espontaneo accion regla comportamiento B(x) homogeneo protocolo algoritmo distribuido NOUT NIN axiomas orientacion local delays finitos confiabilidad entrega garantizada parcial total delays acotados unitarios relojes sincronizados costo complejidad mensajes tiempo estado configuracion sigma conocimiento local metrico topologico mapas">
+        <div class="chapter-head">
+          <div class="chapter-number">17</div>
+          <div><h2>Ambientes distribuidos</h2></div>
+        </div>
+
+        <p>Un <strong>ambiente distribuido</strong> es un sistema donde múltiples unidades de cómputo trabajan juntas, están <strong>separadas espacialmente</strong> y se comunican <strong>a través de mensajes</strong>. Es un modelo formal para razonar sobre algoritmos distribuidos.</p>
+
+        <h3>Entidad y sus capacidades</h3>
+        <p>Una <strong>entidad</strong> es la unidad de cómputo (proceso, procesador, microcontrolador). Sus <strong>capacidades</strong>:</p>
+        <ul class="study-list">
+          <li>Acceso de lectura/escritura a una <strong>memoria local no compartida</strong> con otras entidades, que incluye un registro de <strong>estado</strong> <code>status(x)</code> y uno de <strong>valor de entrada</strong> <code>value(x)</code>.</li>
+          <li><strong>Procesamiento local</strong> (CPU, ALU).</li>
+          <li><strong>Interfaz de comunicación</strong> para preparar, enviar y recibir mensajes.</li>
+          <li>Setear y resetear un <strong>reloj local</strong>.</li>
+        </ul>
+        <p>Una entidad es <strong>reactiva</strong>: solo responde a <strong>eventos externos</strong>, que son: la <em>llegada de un mensaje</em>, la <em>activación de un temporizador</em> local, o un <em>impulso espontáneo</em> (evento interno que la entidad se dispara a sí misma).</p>
+
+        <h3>Acción, Regla y Comportamiento</h3>
+        <div class="callout">
+          <strong>Acción:</strong> secuencia <em>finita e indivisible</em> (atómica) de operaciones, ejecutada sin interrupciones.<br>
+          <strong>Regla:</strong> define qué acción ejecutar cuando una entidad en cierto <em>estado</em> detecta cierto <em>evento</em>, con la forma <code>estado × evento → acción</code>.<br>
+          <strong>Comportamiento <code>B(x)</code>:</strong> el conjunto total de reglas que la entidad <code>x</code> obedece. Para cada par (estado, evento) hay una <strong>única regla</strong>. <code>B(x)</code> es el <strong>protocolo</strong> o <strong>algoritmo distribuido</strong> de <code>x</code>.
+        </div>
+        <p>El <strong>comportamiento colectivo</strong> del ambiente es el conjunto de comportamientos de todas las entidades. Es <strong>homogéneo</strong> si todas tienen el mismo comportamiento; <em>cualquier</em> protocolo puede transformarse en homogéneo.</p>
+
+        <h3>Comunicación, axiomas y restricciones</h3>
+        <ul class="study-list">
+          <li>Las entidades se comunican con <strong>mensajes</strong> (secuencias finitas de bits). Una entidad puede tener <strong>vecindad restringida</strong>: <code>NOUT(x)</code> = vecinos a los que puede enviar; <code>NIN(x)</code> = vecinos de los que puede recibir.</li>
+          <li><strong>Axiomas de la red:</strong> <em>delays finitos</em> (en ausencia de fallas, los retrasos son finitos) y <em>orientación local</em> (la entidad distingue sus vecinos <code>NIN</code>/<code>NOUT</code>, sabe quién le manda y a quién mandar).</li>
+          <li><strong>Restricciones de confiabilidad:</strong> <em>entrega garantizada</em> (todo mensaje llega intacto), <em>confiabilidad parcial</em> (no ocurrirán fallas), <em>confiabilidad total</em> (no han ocurrido ni ocurrirán).</li>
+          <li><strong>Restricciones temporales:</strong> <em>delays acotados</em> (constante Δ), <em>delays unitarios</em> (1 unidad de tiempo), <em>relojes sincronizados</em> (todos incrementan a la par).</li>
+        </ul>
+
+        <h3>Estados, tiempo y conocimiento</h3>
+        <ul class="study-list">
+          <li><strong>Estado / configuración:</strong> el estado interno <code>σ(x, t)</code> es el contenido de los registros de <code>x</code> más su reloj en el instante <code>t</code>. Cambia con los eventos. Es <strong>determinístico</strong>: mismo evento + mismo estado interno ⇒ mismo estado nuevo.</li>
+          <li><strong>Tiempo y eventos:</strong> al ocurrir un evento externo se dispara una acción indivisible que puede generar eventos futuros (<code>Future(t)</code>), creando nuevas secuencias de ejecución según los delays.</li>
+          <li><strong>Costo y complejidad:</strong> métricas para comparar algoritmos: cantidad de mensajes/transmisiones (<code>M</code>) y <strong>tiempo</strong> (total e ideal, bajo delays unitarios y relojes sincronizados).</li>
+        </ul>
+        <div class="callout blue"><strong>Conocimiento:</strong> el <strong>conocimiento local</strong> es el contenido de la memoria local de <code>x</code> y lo que se deriva de ella; en ausencia de fallas no se puede perder. Tipos: <strong>información métrica</strong> (datos numéricos: nº de nodos, aristas, diámetro), <strong>propiedades topológicas</strong> (p. ej. «el grafo es un anillo/árbol») y <strong>mapas topológicos</strong> (mapa de la vecindad hasta distancia <code>d</code>, p. ej. la matriz de adyacencia).</div>
+
+        <p class="exam-answer"><strong>En el final (aparece seguido):</strong> «qué es una entidad y enumerar sus capacidades»; «explicar Acción, Regla y Comportamiento y cómo se caracteriza» (respuesta: por su conjunto de reglas <code>estado × evento → acción</code>, que es su protocolo, con una única regla por par estado-evento, y puede ser homogéneo); «qué es el Conocimiento y qué tipos existen» (métrico, topológico, mapas).</p>
+      </section>
+
+      <section class="chapter" id="redes" data-title="redes modelo de capas osi tcp ip protocolo servicio sin conexion con conexion ack transporte aplicacion fisica enlace paquete udp http ftp encapsulamiento">
+        <div class="chapter-head">
+          <div class="chapter-number">18</div>
+          <div><h2>Redes y modelo OSI (repaso)</h2></div>
+        </div>
+
+        <p>Para entender la comunicación distribuida conviene repasar el <strong>modelo de capas</strong>: una separación en niveles (física, enlace, red, transporte, sesión, presentación, aplicación) que abstrae las funciones de comunicación y favorece la <strong>modularidad</strong> y la <strong>portabilidad</strong>.</p>
+        <ul class="study-list">
+          <li>Cada capa <code>N</code> ofrece un <strong>servicio</strong> a la capa <code>N+1</code> y se comunica con su par mediante un <strong>protocolo</strong> de capa <code>N</code>.</li>
+          <li><strong>Tipos de servicio:</strong> <em>sin conexión</em> (UDP puro, sin control de flujo ni errores), <em>sin conexión con ACK</em> (acuse por cada dato, más confiable sin enlace dedicado) y <em>con conexión</em> (TCP: tres fases —establecimiento, datos, cierre— con control de flujo y de errores).</li>
+          <li><strong>OSI:</strong> estándar de 7 capas que define interfaces y protocolos en cada nivel. <strong>TCP/IP</strong> es la pila real (IP, TCP, UDP y protocolos de aplicación como HTTP, FTP).</li>
+        </ul>
+        <p class="exam-answer"><strong>En el final:</strong> suele venir como apoyo de sockets. Recordar: TCP = con conexión, confiable, control de flujo/errores; UDP = sin conexión, sin garantías; y que cada capa da un <em>servicio</em> a la de arriba y habla un <em>protocolo</em> con su par.</p>
+      </section>

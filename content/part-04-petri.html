@@ -1,0 +1,94 @@
+      <section class="chapter" id="petri" data-title="redes de petri red ordinaria general lugares transiciones arcos marca token funcion de entrada salida I(t) O(t) disparo firing habilitada grafo de alcance peso W marca inicial M0 arco inhibidor productor consumidor lector escritor reserva de asientos modelar">
+        <div class="chapter-head">
+          <div class="chapter-number">12</div>
+          <div><h2>Redes de Petri</h2></div>
+        </div>
+
+        <p>Las <strong>Redes de Petri</strong> son una herramienta <strong>gráfica y matemática</strong> para modelar y analizar sistemas concurrentes o distribuidos. Permiten razonar formalmente sobre estados alcanzables, exclusión mutua y deadlocks.</p>
+
+        <h3>Red Ordinaria de Petri</h3>
+        <p>Se define como <code>PN = (T, P, A)</code>:</p>
+        <ul class="study-list">
+          <li><strong><code>P</code> — Lugares:</strong> estados/condiciones del sistema (se dibujan como círculos).</li>
+          <li><strong><code>T</code> — Transiciones:</strong> eventos que causan cambios de estado (barras/rectángulos).</li>
+          <li><strong><code>A</code> — Arcos:</strong> conectan lugares con transiciones y transiciones con lugares (nunca lugar-lugar ni transición-transición).</li>
+          <li><strong>Marca <code>M</code>:</strong> asigna a cada lugar un número no negativo de <strong>tokens</strong>, <code>M : P → N ∪ {0}</code>. Es el <em>estado actual</em> del sistema.</li>
+          <li><strong>Funciones de Entrada <code>I(t)</code> y Salida <code>O(t)</code>:</strong> para cada transición <code>t</code>, <code>I(t)</code> son sus lugares de <em>entrada</em> (precondiciones) y <code>O(t)</code> los de <em>salida</em> (postcondiciones).</li>
+        </ul>
+        <div class="callout"><strong>Regla de disparo (ordinaria):</strong> una transición está <strong>habilitada</strong> si <em>todos</em> sus lugares de entrada tienen al menos un token. Al <strong>dispararse (fire)</strong>, consume un token de cada lugar de entrada y produce un token en cada lugar de salida. El <strong>grafo de alcance</strong> representa todos los estados (marcas) alcanzables y las transiciones entre ellos.</div>
+        <p><strong>Interpretaciones:</strong> los lugares pueden ser precondiciones, datos, señales o buffers de entrada; las transiciones, eventos, cómputos o procesamiento de señales; los lugares de salida, postcondiciones, datos/señales/buffers de salida.</p>
+
+        <h3>Red General de Petri</h3>
+        <p>Se define como <code>PN = (T, P, A, W, M0)</code>, agregando:</p>
+        <ul class="study-list">
+          <li><strong><code>W : A → N</code> (peso):</strong> cada arco tiene un peso (número de tokens que transporta).</li>
+          <li><strong><code>M0 : P → N ∪ {0}</code> (marca inicial):</strong> la configuración de tokens al arrancar.</li>
+        </ul>
+        <div class="callout blue"><strong>Regla de disparo (general):</strong> <code>t</code> está habilitada si <code>M(p) &gt;= W(p, t)</code> para todo lugar de entrada <code>p</code>. Al dispararse, consume <code>W(p, t)</code> tokens de cada entrada y produce <code>W(p', t)</code> tokens en cada salida. La ordinaria es el caso con todos los pesos = 1.</div>
+        <p>Los <strong>arcos inhibidores</strong> son una extensión: impiden que una transición se dispare si el lugar de origen <em>tiene</em> tokens (condición «que esté vacío»). Son necesarios, por ejemplo, para modelar la <strong>preferencia de escritura</strong> en lector-escritor.</p>
+
+        <h3>Ejemplo 1 — Exclusión mutua (sección crítica)</h3>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    NC1(("P1 fuera")) --> e1["entrar 1"]
+    e1 --> C1(("P1 en SC"))
+    C1 --> s1["salir 1"]
+    s1 --> NC1
+    MUTEX(("mutex (1)")) --> e1
+    s1 --> MUTEX
+    MUTEX --> e2["entrar 2"]
+    s2["salir 2"] --> MUTEX
+    NC2(("P2 fuera")) --> e2
+    e2 --> C2(("P2 en SC"))
+    C2 --> s2
+    s2 --> NC2
+          </div>
+          <figcaption>El lugar <code>mutex</code> tiene 1 token. <code>entrar 1</code> y <code>entrar 2</code> compiten por ese único token → solo uno entra a la sección crítica a la vez. Al salir, el token vuelve. La marca <code>mutex + (P1 en SC) + (P2 en SC) = 1</code> es el invariante que prueba la exclusión mutua.</figcaption>
+        </figure>
+
+        <h3>Ejemplo 2 — Productor-Consumidor con buffer acotado</h3>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    PL(("Productor listo")) --> tp["producir"]
+    tp --> PP(("item en mano"))
+    PP --> dep["depositar"]
+    LIB(("Libres (N)")) --> dep
+    dep --> PL
+    dep --> OCU(("Ocupados (0)"))
+    OCU --> ret["retirar"]
+    ret --> LIB
+    ret --> CC(("Consumidor con item"))
+    CC --> tc["consumir"]
+    tc --> CL(("Consumidor listo"))
+    CL --> ret
+          </div>
+          <figcaption><code>Libres</code> arranca con <code>N</code> tokens (huecos) y <code>Ocupados</code> con 0. <strong>Depositar</strong> requiere un hueco libre (consume de <code>Libres</code>, produce en <code>Ocupados</code>); <strong>retirar</strong> requiere un ítem (consume de <code>Ocupados</code>, produce en <code>Libres</code>). Invariante <code>Libres + Ocupados = N</code>: nunca se sobrepasa la capacidad. Son exactamente los semáforos <code>notFull</code> (Libres) y <code>notEmpty</code> (Ocupados).</figcaption>
+        </figure>
+
+        <h3>Ejemplo 3 — Reserva de asientos de un estadio (final 16/07/2026)</h3>
+        <p><strong>Enunciado:</strong> 3 asientos disponibles; un cliente reserva un asiento si hay al menos uno libre (si no, espera); un asiento ocupado puede liberarse (cancelación) y queda disponible; nunca debe reservarse más asientos de los que existen.</p>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    L(("Libres — M0 = 3")) -->|"peso 1"| R["Reservar"]
+    R --> O(("Ocupados — M0 = 0"))
+    O -->|"peso 1"| C["Cancelar"]
+    C --> L
+          </div>
+          <figcaption><strong>Lugares:</strong> <code>Libres</code> (asientos disponibles) y <code>Ocupados</code> (asientos reservados). <strong>Transiciones:</strong> <code>Reservar</code> (habilitada solo si <code>Libres ≥ 1</code>: consume 1 de Libres y produce 1 en Ocupados) y <code>Cancelar</code> (consume 1 de Ocupados y produce 1 en Libres). <strong>Marca inicial</strong> <code>M0 = (Libres:3, Ocupados:0)</code>.</figcaption>
+        </figure>
+        <div class="callout">
+          <strong>Por qué es correcto:</strong> el <strong>invariante</strong> <code>Libres + Ocupados = 3</code> se mantiene en todo disparo (Reservar y Cancelar solo mueven un token de un lugar al otro). Por lo tanto <code>Ocupados ≤ 3</code> <em>siempre</em> → nunca se reservan más de 3 asientos. Cuando <code>Libres = 0</code>, <code>Reservar</code> no está habilitada: el cliente <strong>espera</strong> (exactamente lo que pide el enunciado).<br><br>
+          <strong>Secuencia de disparos válida:</strong> <code>M0=(3,0)</code> → Reservar → <code>(2,1)</code> → Reservar → <code>(1,2)</code> → Reservar → <code>(0,3)</code> → <em>(otro cliente quiere reservar pero Reservar está deshabilitada: espera)</em> → Cancelar → <code>(1,2)</code> → Reservar → <code>(0,3)</code>.
+        </div>
+
+        <h3>Modelado de otros problemas clásicos</h3>
+        <ul class="study-list">
+          <li><strong>Lector-Escritor:</strong> un lugar «recurso» con capacidad; para <em>preferencia de escritura</em> se usan <strong>arcos inhibidores</strong> que impiden que entren lectores si hay un escritor esperando.</li>
+          <li><strong>Cliente-Servidor:</strong> lugares para peticiones/respuestas y transiciones para el procesamiento.</li>
+        </ul>
+
+        <p class="exam-answer"><strong>En el final (Ej. típico de Petri):</strong> (1) describir Red Ordinaria vs General y qué son <code>I(t)</code>/<code>O(t)</code>; (2) modelar un sistema. Receta para modelar: identificá los <strong>lugares</strong> (estados/recursos, con su marca inicial), las <strong>transiciones</strong> (acciones), dibujá los arcos, y <strong>justificá con un invariante</strong> por qué la propiedad de seguridad (ej. «no más de N») se cumple. Cerrá con una <strong>secuencia de disparos válida</strong>.</p>
+      </section>

@@ -1,0 +1,232 @@
+      <section class="chapter" id="finales" data-title="finales resueltos examen final metodo plantilla como resolver 16 julio 2026 09 julio 2026 diseño de sistema venta online sobreventa transaccionalidad secuencia pseudocodigo actores">
+        <div class="chapter-head">
+          <div class="chapter-number">A</div>
+          <div><h2>Finales resueltos y cómo resolverlos</h2></div>
+        </div>
+
+        <p>El final es <strong>conceptual + modelado + diseño</strong>: definir y comparar conceptos, modelar con Redes de Petri o actores, y diseñar un sistema justificando decisiones. Rara vez pide implementar de cero; casi siempre pide <em>explicar, comparar y justificar</em>.</p>
+
+        <div class="callout"><strong>Método para cualquier consigna:</strong> (1) <strong>Definí</strong> el concepto con precisión. (2) <strong>Contrastá</strong> con lo vecino (semáforo vs monitor, 2PL vs optimista, deadlock vs starvation). (3) <strong>Ejemplificá</strong> o <strong>modelá</strong> (diagrama). (4) <strong>Justificá</strong> la elección para el caso concreto (¿CPU o I/O?, ¿alta o baja contención?, ¿qué invariante garantiza la seguridad?).</div>
+
+        <h3>Final 16/07/2026 — resuelto</h3>
+        <ol class="study-list">
+          <li><strong>Redes de Petri:</strong> Red Ordinaria vs General, <code>I(t)</code>/<code>O(t)</code>, y modelar la reserva de 3 asientos. → Resuelto completo en <a href="#petri">§12 Redes de Petri</a> (lugares <code>Libres</code>/<code>Ocupados</code>, invariante <code>Libres+Ocupados=3</code>, secuencia de disparos).</li>
+          <li><strong>Monitores:</strong> implementación, métodos y comparación con semáforos. → <a href="#semaforos">§10</a>: variables de condición (FIFO, sin valor), <code>waitC</code> siempre bloquea y libera el monitor, <code>signalC</code> no hace nada si la cola está vacía; tabla semáforo vs monitor.</li>
+          <li><strong>Transacciones:</strong> 2PC (ventajas/desventajas) y cuándo usar concurrencia optimista. → <a href="#transacciones">§13</a>: 2PC atómico pero bloqueante y con SPOF; optimista conviene con <em>baja contención</em> y mayoría de lecturas.</li>
+          <li><strong>Ambientes distribuidos:</strong> Acción/Regla/Comportamiento y Conocimiento. → <a href="#ambientes">§17</a>.</li>
+          <li><strong>Diseño de un sistema (venta online):</strong> resuelto abajo.</li>
+        </ol>
+
+        <h3>Final 09/07/2026 — resuelto</h3>
+        <ol class="study-list">
+          <li><strong>Comparar</strong> busy-wait, deadlock, race condition y starvation. → <a href="#correccion">§8</a> (tabla de los cuatro).</li>
+          <li><strong>Modelo de actores:</strong> motivación, características y ciclo de vida en Actix. → <a href="#mensajes">§7</a>.</li>
+          <li><strong>Deadlocks distribuidos</strong> + gráfico. → <a href="#deadlocks">§14</a> (detección centralizada/probe, prevención wait-die/wound-wait).</li>
+          <li><strong>Entidad</strong> en un ambiente distribuido y sus capacidades. → <a href="#ambientes">§17</a>.</li>
+          <li><strong>Compra-venta de tickets en hora pico</strong> (prevenir compras duplicadas, mucha lectura y escritura): explicar 2PL, timestamps y optimista y elegir. → <a href="#transacciones">§13</a>: con alta contención de escritura conviene <strong>pesimista (2PL / timestamps)</strong> para evitar la sobreventa; optimista solo para la parte de lectura.</li>
+        </ol>
+
+        <h3>Diseño de un sistema — Venta online con reserva de stock</h3>
+        <p><strong>Problema:</strong> tienda que despacha de un único depósito; los usuarios eligen producto/variante/cantidad, el sistema reserva temporalmente el stock, valida la cobertura de envío, cobra y emite la orden, <strong>evitando vender más unidades de las que hay</strong> incluso con muchos usuarios en simultáneo.</p>
+
+        <h4>1) Esquema de transaccionalidad</h4>
+        <p>El punto crítico es el <strong>decremento de stock</strong>: debe ser una <strong>sección crítica serializada por SKU</strong>. Un <strong>actor por producto</strong> (o un <code>Mutex</code>/lock pesimista por SKU) procesa las reservas <em>de a una</em> → imposible que dos usuarios reserven la última unidad (misma garantía que el invariante de los asientos en Petri). El checkout es una <strong>transacción</strong> con reserva de TTL: <code>Reservar → ValidarEnvío → Cobrar → Confirmar</code>, y si algún paso falla se hace <strong>rollback</strong> liberando la reserva.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Problema potencial</th><th>Cómo lo resuelve</th></tr></thead>
+          <tbody>
+            <tr><td>Sobreventa de la misma unidad</td><td>Reserva serializada por SKU (actor/lock); solo se confirma si la reserva fue exitosa.</td></tr>
+            <tr><td>Cobertura de envío fallida</td><td>Se valida <em>antes</em> de cobrar; si falla, se libera la reserva.</td></tr>
+            <tr><td>Pago rechazado</td><td>Rollback de la transacción: se libera el stock reservado (writeahead log / compensación).</td></tr>
+            <tr><td>Usuario que abandona el checkout</td><td>La reserva tiene <strong>TTL</strong>: expira y el stock vuelve a estar disponible.</td></tr>
+          </tbody>
+        </table></div>
+
+        <h4>2) Entidades y mensajes</h4>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Entidad</th><th>Estado interno</th><th>Mensajes</th></tr></thead>
+          <tbody>
+            <tr><td>Sesión/Checkout</td><td>carrito, dirección, estado del flujo</td><td>envía <code>Reservar</code>, <code>ValidarEnvío</code>, <code>Cobrar</code>, <code>Confirmar</code>/<code>Cancelar</code></td></tr>
+            <tr><td>Producto (actor por SKU)</td><td><code>stock</code>, reservas con TTL</td><td>recibe <code>Reservar(qty)</code>→<code>Ok/Sin stock</code>, <code>Confirmar</code>, <code>Liberar</code></td></tr>
+            <tr><td>ServicioEnvío</td><td>coberturas por código postal</td><td>recibe <code>ValidarEnvío(cp)</code></td></tr>
+            <tr><td>Pasarela de pago</td><td>—</td><td>recibe <code>Cobrar(datos)</code>→<code>Aprobado/Rechazado</code></td></tr>
+            <tr><td>Orden</td><td>ítems, estado, pago</td><td>se crea con <code>Confirmar</code> y emite el despacho</td></tr>
+          </tbody>
+        </table></div>
+
+        <h4>3) Casos de éxito y de falla</h4>
+        <ul class="study-list">
+          <li><span class="tag">éxito</span> Reserva OK → envío cubierto → pago aprobado → <strong>Confirmar</strong>: se descuenta el stock definitivamente y se emite la orden.</li>
+          <li><span class="tag">éxito</span> Retiro en sucursal: igual pero sin validación de envío a domicilio.</li>
+          <li><span class="tag red">falla</span> Stock agotado por otro usuario durante el checkout: <code>Reservar</code> devuelve «Sin stock» → se avisa y no se cobra.</li>
+          <li><span class="tag red">falla</span> Pago rechazado: se envía <code>Liberar</code> al Producto y se cancela la transacción; el stock reservado vuelve.</li>
+        </ul>
+
+        <h4>4) Diagrama de secuencia de una ejecución posible</h4>
+        <figure class="diagram">
+          <div class="mermaid">
+sequenceDiagram
+    participant U as Checkout
+    participant P as Producto (SKU)
+    participant E as Envío
+    participant Pay as Pago
+    U->>P: Reservar(qty)
+    P-->>U: Ok (reserva con TTL)
+    U->>E: ValidarEnvío(cp)
+    E-->>U: Cubierto
+    U->>Pay: Cobrar(datos)
+    Pay-->>U: Aprobado
+    U->>P: Confirmar
+    P-->>U: Stock descontado
+    Note over U: se emite la Orden
+          </div>
+          <figcaption>Camino feliz. Si <code>Cobrar</code> devuelve «Rechazado», <code>Checkout</code> envía <code>Liberar</code> al <code>Producto</code> y aborta.</figcaption>
+        </figure>
+
+        <h4>5) Pseudocódigo Rust (actor Producto)</h4>
+        <pre data-code="rust">use actix::prelude::*;
+
+#[derive(Message)]
+#[rtype(result = "Result<(), &'static str>")]
+struct Reservar { qty: u32 }
+
+struct Producto { stock: u32, reservado: u32 }
+
+impl Actor for Producto { type Context = Context<Self>; }
+
+impl Handler<Reservar> for Producto {
+    type Result = Result<(), &'static str>;
+    fn handle(&mut self, msg: Reservar, _: &mut Context<Self>) -> Self::Result {
+        // Un mensaje a la vez => decremento serializado, sin sobreventa
+        if self.stock - self.reservado >= msg.qty {
+            self.reservado += msg.qty;        // reserva temporal (con TTL aparte)
+            Ok(())
+        } else {
+            Err("sin stock")                  // el checkout avisa al usuario
+        }
+    }
+}
+// Confirmar: stock -= qty; reservado -= qty.   Liberar: reservado -= qty.</pre>
+        <div class="callout blue">Este diseño combina tres temas del programa: <strong>actores</strong> (§7, aislamiento sin locks), <strong>transaccionalidad</strong> (§13, reserva + rollback) y el <strong>invariante de capacidad</strong> de las <strong>Redes de Petri</strong> (§12, <code>reservado ≤ stock</code>). Mostrar esa integración es lo que distingue un buen final.</div>
+      </section>
+
+      <section class="chapter" id="ejercicios" data-title="banco de ejercicios parciales resueltos busy wait analisis codigo semaforo condvar if while spurious wakeup verdadero falso async elegir modelo pseudocodigo N threads productor consumidor lector escritor petri restaurante actores">
+        <div class="chapter-head">
+          <div class="chapter-number">B</div>
+          <div><h2>Banco de ejercicios (parciales)</h2></div>
+        </div>
+        <p>Ejercicios reales de parcial con su resolución. Intentá resolverlos <em>antes</em> de abrir la solución.</p>
+
+        <details>
+          <summary>1. ¿Es busy-wait? Analizar fragmentos de código</summary>
+          <p><strong>Regla:</strong> es busy-wait solo si el loop <em>gira consumiendo CPU sin ceder ni hacer trabajo útil</em>.</p>
+          <ul class="study-list">
+            <li>Minero que en cada vuelta <em>mina</em>, escribe un resultado y hace <code>thread::sleep</code> → <strong>NO</strong> es busy-wait (hace trabajo útil y cede CPU).</li>
+            <li>Loop que toma un <code>write lock</code>, si acumuló ≥100 produce una batería, y duerme 500 ms → <strong>NO</strong> (duerme entre chequeos y produce cuando corresponde).</li>
+            <li><code>loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }</code> → <strong>NO</strong> (reintenta con espera).</li>
+            <li>Loop que revisa vencimientos en una lista y hace <code>sleep</code> aleatorio entre pasadas → <strong>NO</strong>.</li>
+            <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait (spin apretado).</li>
+          </ul>
+          <p>Ver la regla completa en <a href="#correccion">§8</a>.</p>
+        </details>
+
+        <details>
+          <summary>2. Identificar la estructura y sus errores (Mutex + Condvar)</summary>
+          <p>Un <code>struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }</code> con <code>function_1</code> (si <code>amount &lt;= 0</code> hace <code>wait</code>, luego <code>-= 1</code>) y <code>function_2</code> (<code>+= 1</code> y <code>notify_all</code>) es un <strong>semáforo contador</strong> (implementado como monitor).</p>
+          <p><strong>Error:</strong> usa <code>if *amount &lt;= 0 { wait }</code> en vez de <code>while</code>. Ante un <strong>spurious wakeup</strong> o varios waiters despertados por <code>notify_all</code>, un proceso puede seguir con <code>amount == 0</code> y decrementar a negativo. <strong>Solución:</strong> cambiar el <code>if</code> por <code>while</code>. (Ver <a href="#semaforos">§10</a>.)</p>
+        </details>
+
+        <details>
+          <summary>3. Programación asincrónica — Verdadero/Falso</summary>
+          <ul class="study-list">
+            <li>«El que hace poll es el thread principal» → <strong>F</strong> (lo hace el executor/runtime).</li>
+            <li>«poll se llama solo cuando la tarea puede progresar» → <strong>V</strong>.</li>
+            <li>«El modelo piñata es colaborativo» → <strong>V</strong> (cooperativo).</li>
+            <li>«La operación async inicia al llamar a la función <code>async</code>» → <strong>F</strong> (solo se crea el Future; arranca al primer poll/await).</li>
+            <li>«Procesos, hilos y tareas async tienen memoria independiente» → <strong>F</strong> (hilos y tareas comparten la del proceso).</li>
+            <li>«El scheduler del SO puede pausar una tarea async puntual» → <strong>F</strong> (las async son cooperativas, las maneja el executor).</li>
+            <li>«Threads y tareas async tienen stack propio» → <strong>parcial</strong>: el thread sí; la tarea async guarda su estado en el Future, no en un stack del SO dedicado.</li>
+            <li>«Con una sola CPU, hilos CPU-intensivos tardan mucho menos que tareas async con el mismo cómputo» → <strong>F</strong>: con cómputo puro no hay ventaja async; incluso los hilos pagan cambios de contexto.</li>
+          </ul>
+        </details>
+
+        <details>
+          <summary>4. Elegir el modelo de concurrencia por caso</summary>
+          <p>Resuelto en la tabla de <a href="#modelos">§4</a>: matrices→SIMD/GPU; varias APIs→async; log muy visitado→async o RwLock; backend de juego→actores; muchos .DOC→.PDF→fork-join; Menti/Kahoot→actores; caché→RwLock; API con modelo NLP→async + <code>spawn_blocking</code>.</p>
+        </details>
+
+        <details>
+          <summary>5. Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio</summary>
+          <pre data-code="rust">use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+let links: Vec<String> = /* 100 URLs */ vec![];
+let n = 8;                                   // máximo de threads activos
+let sem = Arc::new(Semaphore::new(n));       // limita la concurrencia
+let total = Arc::new(Mutex::new(Duration::ZERO));
+let mut handles = vec![];
+
+for url in links {
+    let sem = Arc::clone(&sem);
+    let total = Arc::clone(&total);
+    handles.push(std::thread::spawn(move || {
+        let _permit = sem.access();          // no más de N a la vez (RAII)
+        let t0 = Instant::now();
+        // simular espera de red
+        std::thread::sleep(Duration::from_millis(rand_ms()));
+        let elapsed = t0.elapsed();
+        *total.lock().unwrap() += elapsed;
+    }));
+}
+for h in handles { h.join().unwrap(); }
+let promedio = *total.lock().unwrap() / 100; // tiempo promedio</pre>
+          <p>El <strong>semáforo</strong> acota los threads activos (baja latencia); el <code>Arc&lt;Mutex&gt;</code> acumula los tiempos. Como es I/O simulada, una variante idiomática sería <strong>async</strong> con un límite de concurrencia.</p>
+        </details>
+
+        <details>
+          <summary>6. Modelar en Petri: productor-consumidor y lector-escritor</summary>
+          <p>Productor-consumidor con buffer acotado: resuelto en <a href="#petri">§12</a> (lugares <code>Libres</code>/<code>Ocupados</code>). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan <strong>arcos inhibidores</strong> que frenan a los lectores si hay un escritor esperando (ver <a href="#clasicos">§11</a> y <a href="#petri">§12</a>).</p>
+        </details>
+
+        <details>
+          <summary>7. Diseñar con actores: el restaurante de San Telmo</summary>
+          <p>Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de <a href="#mensajes">§7</a>. El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican <code>PlatoListo</code> a los mozos.</p>
+        </details>
+      </section>
+
+      <section class="chapter" id="glosario" data-title="glosario definiciones concurrencia paralelismo atomicidad interleaving deadlock starvation race condition busy wait seccion critica semaforo monitor mutex rwlock barrier future poll actor mailbox petri token 2PC 2PL ACID timestamp ricart agrawala bully token ring send sync arc ownership">
+        <div class="chapter-head">
+          <div class="chapter-number">C</div>
+          <div><h2>Glosario</h2></div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Término</th><th>Definición breve</th></tr></thead>
+          <tbody>
+            <tr><td>Instrucción atómica</td><td>Se ejecuta entera o no se ejecuta; sin interrupciones.</td></tr>
+            <tr><td>Interleaving</td><td>Intercalación arbitraria de las instrucciones atómicas de los procesos (respetando el orden causal de cada uno).</td></tr>
+            <tr><td>Concurrencia / Paralelismo</td><td>Tratar varias tareas a la vez (diseño) / ejecutarlas físicamente en simultáneo (hardware).</td></tr>
+            <tr><td>Race condition</td><td>El resultado depende del timing de accesos no sincronizados a estado compartido.</td></tr>
+            <tr><td>Busy-wait</td><td>Espera activa: girar en un loop consumiendo CPU sin trabajo útil.</td></tr>
+            <tr><td>Deadlock</td><td>Procesos que se esperan mutuamente; nadie avanza (condiciones de Coffman).</td></tr>
+            <tr><td>Starvation</td><td>Un proceso listo nunca obtiene el recurso; el sistema sí avanza.</td></tr>
+            <tr><td>Safety / Liveness</td><td>«Algo malo nunca pasa» (siempre) / «algo bueno eventualmente pasa».</td></tr>
+            <tr><td>Sección crítica</td><td>Bloque que accede a recursos compartidos; requiere exclusión mutua.</td></tr>
+            <tr><td>Semáforo</td><td>Contador (V, L) con <code>wait</code>/<code>signal</code> atómicos; binario = mutex.</td></tr>
+            <tr><td>Monitor</td><td>Exclusión mutua + variables de condición (<code>waitC</code>/<code>signalC</code>, FIFO).</td></tr>
+            <tr><td>Spurious wakeup</td><td>Despertar sin <code>notify</code>; por eso el wait va en un <code>while</code>.</td></tr>
+            <tr><td>Ownership / Send / Sync</td><td>Un dueño por valor; <code>Send</code> = mover entre threads; <code>Sync</code> = referenciar desde varios threads.</td></tr>
+            <tr><td>Arc / Mutex / RwLock</td><td>Compartir dueño entre threads / lock exclusivo / lock lectura-escritura.</td></tr>
+            <tr><td>Future / poll</td><td>Operación async testeable; <code>poll</code> nunca bloquea (Ready/Pending); modelo piñata.</td></tr>
+            <tr><td>Fork-Join / Work stealing</td><td>Dividir en subtareas y unir; balanceo robando tareas de otras deques.</td></tr>
+            <tr><td>Actor</td><td>Entidad aislada con estado privado; se comunica solo por mensajes; mailbox FIFO.</td></tr>
+            <tr><td>Red de Petri</td><td>(T, P, A[, W, M0]); lugares con tokens, transiciones que disparan.</td></tr>
+            <tr><td>ACID</td><td>Atomic, Consistent, Isolated/Serializable, Durable.</td></tr>
+            <tr><td>2PC</td><td>Two-Phase Commit: prepare/ready + commit/finished, con coordinador.</td></tr>
+            <tr><td>2PL</td><td>Two-Phase Locking: expansión (toma) + contracción (libera); serializable.</td></tr>
+            <tr><td>Concurrencia optimista</td><td>Sin locks; verifica conflictos al commit y aborta si los hay.</td></tr>
+            <tr><td>Wait-Die / Wound-Wait</td><td>Prevención de deadlock con timestamps (el viejo espera / el viejo desaloja).</td></tr>
+            <tr><td>Ricart-Agrawala / Token Ring</td><td>Exclusión mutua distribuida por timestamps / por token en anillo.</td></tr>
+            <tr><td>Bully / Ring</td><td>Elección de líder; siempre gana el de mayor ID.</td></tr>
+            <tr><td>Entidad (ambiente distribuido)</td><td>Unidad de cómputo reactiva con memoria local, comportamiento = reglas estado×evento→acción.</td></tr>
+          </tbody>
+        </table></div>
+      </section>

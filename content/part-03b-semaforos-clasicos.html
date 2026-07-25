@@ -1,0 +1,156 @@
+      <section class="chapter" id="semaforos" data-title="semaforos barreras monitores wait signal p v binario mutex invariante variable de condicion waitC signalC empty spurious wakeup while notify notifyAll synchronized java volatile condvar armar semaforo con monitores barrier leader">
+        <div class="chapter-head">
+          <div class="chapter-number">10</div>
+          <div><h2>Semáforos, barreras y monitores</h2></div>
+        </div>
+
+        <p>Son mecanismos de sincronización de más alto nivel para coordinar el acceso a recursos compartidos. Sirven para <strong>evitar el busy-wait</strong>, las condiciones de carrera y para garantizar comportamiento determinista.</p>
+
+        <h3>Semáforos</h3>
+        <p>Un semáforo es un tipo con un entero no negativo <strong><code>V</code></strong> y un conjunto de procesos bloqueados <strong><code>L</code></strong>. Se inicializa con <code>k &gt;= 0</code> y <code>L</code> vacío. Actúa como <strong>contador de recursos disponibles</strong>: <code>V &gt; 0</code> hay recursos; <code>V &lt;= 0</code> no. Dos operaciones <strong>atómicas</strong>:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Operación</th><th>Semántica</th></tr></thead>
+            <tbody>
+              <tr><td><code>wait(S)</code> / <code>p(S)</code></td><td>Si <code>V &gt; 0</code>, lo decrementa y el proceso continúa. Si <code>V == 0</code>, el proceso <strong>se bloquea</strong> y se agrega a <code>L</code>.</td></tr>
+              <tr><td><code>signal(S)</code> / <code>v(S)</code></td><td>Si <code>L</code> está vacío, incrementa <code>V</code>. Si no, despierta a uno de <code>L</code> y lo pasa a <em>ready</em>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul class="study-list">
+          <li><strong>Semáforo binario / Mutex:</strong> <code>V</code> solo puede ser 0 o 1; se comporta como un lock de escritura.</li>
+          <li><strong>Invariantes:</strong> <code>S.V &gt;= 0</code> y <code>S.V = k + #signal(S) - #wait(S)</code> (con <code>k</code> el valor inicial). Sirven para demostrar corrección.</li>
+          <li>Tipos: <strong>System V</strong> y <strong>POSIX</strong>. En Rust: crate <code>std-semaphore</code> con <code>new(k)</code>, <code>acquire()</code>, <code>release()</code>, <code>access()</code> (RAII).</li>
+        </ul>
+
+        <h3>Barreras (<code>std::sync::Barrier</code>)</h3>
+        <p>Sincronizan varios threads en un <strong>punto específico</strong> del cómputo: nadie sigue hasta que <em>todos</em> llegan.</p>
+        <ul class="study-list">
+          <li><code>Barrier::new(n)</code>: barrera para <code>n</code> threads. <code>wait()</code>: bloquea hasta que los <code>n</code> lleguen.</li>
+          <li>Uno de los threads se designa <strong>líder</strong> (<code>BarrierWaitResult::is_leader()</code>).</li>
+          <li>Las barreras son <strong>reutilizables</strong> automáticamente.</li>
+        </ul>
+
+        <h3>Monitores</h3>
+        <p>Un <strong>monitor</strong> combina <strong>exclusión mutua</strong> (solo un proceso ejecuta un procedimiento del monitor a la vez) con la capacidad de <strong>esperar a que una condición se cumpla</strong>. Componentes: nombre, variables internas <em>protegidas</em>, procedimientos que acceden a esas variables, interfaz pública, inicialización y <strong>variables de condición</strong>.</p>
+        <p>Las <strong>variables de condición</strong> (<code>C</code>) <strong>no guardan valor</strong>; tienen asociado un <strong>FIFO</strong> de procesos:</p>
+        <ul class="study-list">
+          <li><code>waitC(cond)</code>: <strong>siempre bloquea</strong> al proceso, lo agrega al FIFO de la condición y <strong>libera el lock del monitor</strong>.</li>
+          <li><code>signalC(cond)</code>: despierta al proceso del <strong>tope del FIFO</strong> si la cola no está vacía; si está vacía, <strong>no tiene efecto</strong>.</li>
+          <li><code>empty(cond)</code>: indica si el FIFO está vacío.</li>
+        </ul>
+
+        <h4>Semáforo vs Monitor (comparación de final)</h4>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Aspecto</th><th>Semáforo (<code>wait</code>/<code>signal</code>)</th><th>Monitor (<code>waitC</code>/<code>signalC</code>)</th></tr></thead>
+            <tbody>
+              <tr><td>¿<code>wait</code> bloquea?</td><td>Puede o no (si <code>V &gt; 0</code> no bloquea)</td><td><code>waitC</code> <strong>siempre</strong> bloquea</td></tr>
+              <tr><td>¿<code>signal</code> tiene efecto?</td><td>Siempre (incrementa o despierta)</td><td><code>signalC</code> <strong>no</strong> tiene efecto si la cola está vacía</td></tr>
+              <tr><td>¿A quién despierta?</td><td>Un proceso <em>arbitrario</em> de <code>L</code></td><td>El del <strong>tope del FIFO</strong></td></tr>
+              <tr><td>Tras la señal</td><td>El desbloqueado puede continuar enseguida</td><td>El desbloqueado <strong>espera</strong> a que el señalizador deje el monitor</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h4>Monitores en Java, <code>volatile</code> y spurious wakeup</h4>
+        <ul class="study-list">
+          <li><strong><code>synchronized</code></strong> (bloque o método): cada objeto tiene un <em>lock/monitor</em>; solo un hilo lo toma a la vez y es <strong>reentrante</strong>.</li>
+          <li><code>wait()</code>: libera el monitor y suspende el hilo hasta que otro llame <code>notify()</code>/<code>notifyAll()</code>. Para llamarlos hay que <strong>tener el monitor adquirido</strong>.</li>
+          <li><code>volatile</code>: indica que la variable <strong>no se cachee</strong> y se lea siempre de memoria principal (visibilidad entre hilos). <strong>No hace ningún lock.</strong></li>
+          <li><strong>Spurious wakeup:</strong> un hilo puede despertarse <em>sin</em> que nadie haya hecho <code>notify</code> (timers, señales, detalles de bajo nivel). Por eso el <code>waitC</code> se pone dentro de un <strong><code>while</code></strong> que revuelve a chequear la condición, nunca dentro de un <code>if</code>.</li>
+        </ul>
+        <div class="callout danger"><strong>Error clásico de parcial:</strong> usar <code>if condición { wait() }</code> en vez de <code>while condición { wait() }</code>. Con <code>if</code>, ante un spurious wakeup (o varios waiters despertados por <code>notify_all</code>) el proceso sigue sin que la condición se cumpla → bug. <strong>Siempre <code>while</code>.</strong></div>
+
+        <h3>Armar un semáforo con monitores (ejercicio típico)</h3>
+        <pre data-code="rust">// Un Mutex&lt;i32&gt; + Condvar ES, en esencia, un semáforo contador implementado
+// como monitor. La condición "hay recursos" se espera con while (no if).
+use std::sync::{Mutex, Condvar};
+
+struct Semaforo { mtx: Mutex<i32>, cond: Condvar }
+
+impl Semaforo {
+    fn new(k: i32) -> Self { Semaforo { mtx: Mutex::new(k), cond: Condvar::new() } }
+
+    fn acquire(&self) {                 // wait / p
+        let mut v = self.mtx.lock().unwrap();
+        while *v == 0 {                 // WHILE: protege de spurious wakeups
+            v = self.cond.wait(v).unwrap();
+        }
+        *v -= 1;
+    }
+
+    fn release(&self) {                 // signal / v
+        let mut v = self.mtx.lock().unwrap();
+        *v += 1;
+        self.cond.notify_one();
+    }
+}</pre>
+
+        <p class="exam-answer"><strong>En el final:</strong> «describir cómo se implementan los monitores y sus métodos, y compararlos con semáforos». Puntos que no pueden faltar: variables de condición sin valor + FIFO; <code>waitC</code> siempre bloquea y libera el monitor; <code>signalC</code> no hace nada si la cola está vacía; y el <code>while</code> por spurious wakeup. Reconocer que <code>Mutex + Condvar</code> = monitor/semáforo.</p>
+      </section>
+
+      <section class="chapter" id="clasicos" data-title="problemas clasicos sincronizacion productor consumidor buffer acotado infinito notEmpty notFull barbero dormilon filosofos comensales deadlock fumadores patil lector escritor preferencia readers writers fifo">
+        <div class="chapter-head">
+          <div class="chapter-number">11</div>
+          <div><h2>Problemas clásicos de sincronización</h2></div>
+        </div>
+
+        <h3>Productor–Consumidor</h3>
+        <p>Dos familias de procesos —<strong>productores</strong> (generan ítems) y <strong>consumidores</strong> (los procesan)— interactúan a través de un <strong>buffer</strong>. Requisitos: no consumir lo que no hay, que todo ítem producido se consuma eventualmente, acceso al buffer de a uno, y orden <strong>FIFO</strong>. Los problemas de sincronización son <em>buffer vacío</em> (no se puede consumir) y <em>buffer lleno</em> (no se puede producir).</p>
+        <ul class="study-list">
+          <li><strong>Buffer infinito:</strong> alcanza controlar que no se consuma vacío → un semáforo <code>notEmpty</code> (inicial 0).</li>
+          <li><strong>Buffer acotado:</strong> dos semáforos, <code>notEmpty</code> (para consumidores, inicial 0) y <code>notFull</code> (para productores, inicial <code>N</code>), más un <code>mutex</code> para el acceso exclusivo al buffer.</li>
+        </ul>
+        <pre data-code="rust">// Buffer acotado con semáforos (pseudocódigo Rust)
+let not_full  = Semaphore::new(N);   // huecos libres
+let not_empty = Semaphore::new(0);   // ítems disponibles
+let buffer    = Mutex::new(VecDeque::new());
+
+// Productor
+loop {
+    let item = producir();
+    not_full.acquire();                        // espera si está lleno
+    buffer.lock().unwrap().push_back(item);    // sección crítica
+    not_empty.release();                       // avisa: hay un ítem
+}
+// Consumidor
+loop {
+    not_empty.acquire();                       // espera si está vacío
+    let item = buffer.lock().unwrap().pop_front().unwrap();
+    not_full.release();                        // avisa: hay un hueco
+    consumir(item);
+}</pre>
+
+        <h3>El barbero dormilón</h3>
+        <p>Un barbero <strong>duerme</strong> si no hay clientes; cuando llega uno, si el barbero está libre lo despierta y lo atiende; si está ocupado, el cliente <strong>espera en una silla</strong> (si hay). Modela sincronización entre un servidor que se bloquea cuando no hay trabajo y clientes que llegan asincrónicamente (semáforos: clientes esperando, barbero listo, mutex de sillas).</p>
+
+        <h3>Los filósofos comensales</h3>
+        <p>Filósofos que alternan entre <strong>pensar</strong> y <strong>comer</strong>. Para comer necesitan <strong>dos palillos</strong> (los adyacentes), que son recursos compartidos. Si todos toman primero el palillo izquierdo, se produce <strong>deadlock</strong> (espera circular); una política injusta genera <strong>starvation</strong>.</p>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    F0(("Filósofo 0")) --- P0["palillo 0"]
+    P0 --- F1(("Filósofo 1"))
+    F1 --- P1["palillo 1"]
+    P1 --- F2(("Filósofo 2"))
+    F2 --- P2["palillo 2"]
+    P2 --- F0
+          </div>
+          <figcaption>Cada filósofo comparte un palillo con cada vecino. Soluciones al deadlock: (a) <strong>ordenar</strong> los recursos y tomar siempre primero el de menor índice; (b) que un filósofo tome en orden inverso; (c) permitir a lo sumo <code>N-1</code> sentados a la mesa; (d) un mozo/mutex que dé permiso para agarrar de a pares.</figcaption>
+        </figure>
+
+        <h3>Los fumadores (Patil)</h3>
+        <p>Tres fumadores, cada uno con un ingrediente infinito distinto (<strong>tabaco</strong>, <strong>papel</strong>, <strong>fósforos</strong>). Un <em>agente</em> pone dos ingredientes aleatorios en la mesa; el fumador que tiene el <strong>tercero</strong> los toma, arma el cigarrillo y fuma. Ejercita despertar selectivamente al proceso correcto según la combinación disponible.</p>
+
+        <h3>Lectores–Escritores</h3>
+        <p>Varios procesos comparten un estado. Reglas: <strong>múltiples lectores</strong> pueden acceder simultáneamente; si un <strong>escritor</strong> accede, <strong>nadie</strong> más (lector o escritor) puede. Aparece starvation según la política:</p>
+        <ul class="study-list">
+          <li><strong>Preferencia de lectores:</strong> mientras haya lectores, los escritores esperan → puede hambrear escritores.</li>
+          <li><strong>Preferencia de escritores (writer preference):</strong> si hay un escritor esperando, los nuevos lectores esperan → puede hambrear lectores.</li>
+          <li><strong>Fair:</strong> se respeta un orden (p. ej. FIFO) para que ninguno se muera de hambre.</li>
+        </ul>
+        <div class="callout blue">Es exactamente lo que ofrece <code>RwLock</code> (capítulo 09): <code>read()</code> = lock compartido, <code>write()</code> = lock exclusivo. La política de preferencia depende del SO.</div>
+
+        <p class="exam-answer"><strong>En el parcial:</strong> te dan una red de Petri o un fragmento de código y tenés que <strong>reconocer el problema</strong> (casi siempre productor-consumidor o lector-escritor) y decir si la implementación es correcta o cómo mejorarla. Memorizá los semáforos de cada uno: <code>notEmpty</code>/<code>notFull</code> para productor-consumidor acotado.</p>
+      </section>
