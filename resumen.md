@@ -1903,6 +1903,188 @@ reservado ≤ stock
 
 ). Mostrar esa integración es lo que distingue un buen final.
 
+### Banco de preguntas de final (con respuestas modelo)
+
+Preguntas reales agrupadas como caen en el examen (Ej 1–5). Intentá responder antes de abrir la solución.
+
+#### Ej 1 — Sección crítica y corrección
+
+**Definir el problema de la sección crítica: programa modelo y especificaciones de corrección**
+
+El **programa modelo** es el esquema abstracto de cada proceso: un **ciclo infinito** cuyo código se divide en *parte crítica* (accede a recursos compartidos) y *parte no-crítica*. La **sección crítica** debe progresar y finalizar eventualmente. Especificaciones: **exclusión mutua** (sus instrucciones no se intercalan), **ausencia de deadlock** (si dos intentan entrar, al menos uno lo logra) y **ausencia de starvation** (si un proceso intenta entrar, eventualmente entra). Ver [§8](#correccion).
+
+**¿Cuál es la importancia de los criterios de corrección?**
+
+En concurrencia la **salida depende del escenario** de ejecución, no solo de la entrada, así que no alcanza con debuggear (a diferencia del código secuencial, determinístico). Por eso se prueban dos clases de propiedades: **Safety** (verdadera *siempre*: exclusión mutua, ausencia de deadlock) y **Liveness** (verdadera *eventualmente*: ausencia de starvation, fairness). Ver [§8](#correccion).
+
+**¿Qué es un deadlock y qué consecuencias tiene? ¿Y en distribuido?**
+
+Dos o más procesos esperan por un recurso que el otro tiene → **dependencia cíclica**, ninguno progresa (ej.: P1 tiene el lock A y espera B; P2 tiene B y espera A). La parte afectada del sistema deja de progresar, los recursos quedan inutilizables y hace falta intervención externa. En **distribuido** se suma que no hay estado global observable, los mensajes pueden llegar desordenados (falsos deadlocks) y la detección/prevención debe hacerse por mensajes. Ver [§14](#deadlocks).
+
+**Mecanismos de prevención de deadlocks en distribuido (a detalle)**
+
+Con un **timestamp único y global** por transacción al iniciar. Al bloquearse por un recurso que otro tiene, se comparan timestamps (menor = más viejo):
+
+- **Wait-Die:** si el que pide es más viejo, *espera*; si es más joven, *aborta* (muere) y reintenta. Impide que un joven espere por un viejo (no forma ciclo).
+- **Wound-Wait:** si el que pide es más viejo, *aborta al que tiene el recurso* (lo «hiere») para tomarlo; si es más joven, *espera*. Es *preemptive* y suele tener menos aborts/rollbacks.
+
+#### Ej 2 — Redes de Petri y fork-join
+
+**Red Ordinaria vs Red General de Petri**
+
+Ambas son grafos dirigidos bipartitos. **Ordinaria**: `PN=(T,P,A)` (transiciones, lugares, arcos). **General**: agrega `W: A→N` (peso de cada arco) y `M0` (marca inicial): `PN=(T,P,A,W,M0)`. Regla de disparo general: `t` habilitada si `M(p) ≥ W(p,t)` para toda entrada; al disparar consume `W(p,t)` y produce `W(t,p')`. Ver [§12](#petri).
+
+**¿Qué es el grafo de alcance? Dibujar un ejemplo**
+
+Lista todas las marcas alcanzables desde `M0`; cada nodo es una marca y cada arco `(M,M')` indica que `t` estaba habilitada en `M` y se disparó llegando a `M'`. Ejemplo con `P={p1,p2,p3,p4}` (`t1` bifurca `p1→p2,p3`; join `t4: p2,p3→p4`):
+
+```mermaid
+flowchart LR
+    M0(("M0 = (1,0,0,0)")) -->|t1| M1(("M1 = (0,1,1,0)"))
+    M1 -->|t4| M2(("M2 = (0,0,0,1)"))
+            
+```
+
+*El diagrama grande de §12 muestra el caso con el «rombo» de concurrencia (dos transiciones independientes que conmutan).*
+
+**Modelar productor-consumidor con buffer acotado (Petri)**
+
+Dos lugares para el buffer: uno de **ítems** (empieza vacío; el consumidor requiere un token acá para consumir) y un **`notFull`** que empieza con `N` tokens (la capacidad; el productor requiere un token acá para depositar). Diagrama completo con notación `p1..p6/t1..t4` en [§12](#petri).
+
+**Fork-join, work stealing, y ¿por qué NO una única cola de tareas?**
+
+**Fork-join**: dividir recursivamente en subtareas independientes, resolver en paralelo y combinar (determinístico, sin races, threads aislados). **Work stealing**: cada hilo tiene su *deque*; saca/encola en su propio extremo y, si se queda sin trabajo, roba del *otro* extremo de la cola de otro hilo. **Una sola cola global sería mala**: pasa a ser *estado mutable compartido* que necesita exclusión mutua; un hilo que encola muchas subtareas retiene el lock y hace esperar al resto → contención y latencia. Ver [§5](#forkjoin).
+
+#### Ej 3 — Redes y sockets
+
+**Las 7 capas del modelo OSI**
+
+| # | Capa | Objetivo | Ejemplos |
+| --- | --- | --- | --- |
+| 1 | Física | Transmitir bits crudos por el medio | medio, ancho de banda |
+| 2 | Enlace de datos | Mover tramas entre nodos vecinos, detectar errores | MAC, control de flujo |
+| 3 | Red | Enrutar paquetes de origen a destino entre redes | IP, routing |
+| 4 | Transporte | Comunicación extremo-a-extremo, multiplexar apps | TCP/UDP, control de flujo |
+| 5 | Sesión | Establecer, mantener y cerrar sesiones de diálogo | control de diálogo, sincronización |
+| 6 | Presentación | Negociar la sintaxis de los datos, (des)cifrado, compresión | ASCII/JPEG, serialización |
+| 7 | Aplicación | Interfaz con el software de usuario, servicios de alto nivel | HTTP, DNS |
+
+**¿Qué son los sockets y qué modelo de concurrencia implementan?**
+
+Interfaz para comunicar dos procesos (misma o distinta máquina), base del modelo **cliente-servidor** (cliente activo inicia, servidor pasivo responde). Implementan **pasaje de mensajes**: cada extremo tiene su propio espacio de memoria y se sincroniza enviando/recibiendo por el stream; **no hay memoria compartida**. Ver [§16](#sockets).
+
+**¿Qué socket/servicio usarías para una app de streaming de películas?**
+
+Para video **en vivo** conviene **UDP** (la pérdida de paquetes se compensa con menor latencia). Para películas **on-demand**, **TCP**: la pérdida degradaría la calidad, así que se prioriza confiabilidad y orden por sobre velocidad. Conclusión: para «películas» (on-demand) → **TCP**.
+
+**Comparar sockets de Unix con channels de Rust**
+
+| Aspecto | Sockets Unix | Channels Rust |
+| --- | --- | --- |
+| Alcance | Entre procesos, incluso entre máquinas | Entre hilos del *mismo* proceso |
+| Datos | Flujo de bytes (TCP) o datagramas sin tipo (UDP) | Mensajes **tipados**, sin serializar |
+| Orden / entrega | TCP: ordenado y confiable; UDP: sin garantías | FIFO estricto, entrega garantizada mientras el canal esté abierto |
+| Dirección | TCP es bidireccional | Unidireccional |
+| Fallas | Fallos de red; hay que manejar timeouts/keepalives | Cierre del canal → `Err`; sin fallos de red |
+| Memoria / relojes | Espacios separados; relojes no sincronizados | Comparten la memoria del proceso |
+| Delimitación | Stream continuo: hace falta un protocolo para delimitar mensajes | Mensajes discretos |
+
+Ambos pueden ser sincrónicos o asincrónicos.
+
+#### Ej 4 — Ambientes distribuidos
+
+**Tipos de eventos en un ambiente distribuido**
+
+La entidad es **reactiva** (solo responde a eventos externos): (1) **llegada de un mensaje** de otra entidad; (2) **activación del reloj local** (vencimiento de un temporizador propio); (3) **impulso espontáneo** (evento interno que la entidad genera sin estímulo externo, para iniciar actividad autónoma). Ver [§17](#ambientes).
+
+**Algoritmo Ring de elección de líder (paso a paso)**
+
+Procesos ordenados lógicamente, cada uno conoce a su sucesor. Un proceso nota que el coordinador falló → arma `ELECTION` con su ID y lo manda al sucesor. Cada receptor **agrega su ID** y reenvía, hasta que el mensaje vuelve al iniciador. Éste lo cambia a `COORDINATOR`: el nuevo líder es el de **mayor ID de la lista**. Variante: propagar solo el ID más alto visto en vez de la lista completa. El `COORDINATOR` se saca de circulación al completar la vuelta. Diagrama en [§15](#exclusion).
+
+**Costo y complejidad: distribuido vs centralizado**
+
+En **distribuido** se mide por: **cantidad de mensajes** `M` (transmisiones), la **carga por entidad** (acciones locales y su reparto) y el **tiempo** —distinguiendo el *tiempo ideal* (camino crítico bajo delays unitarios y relojes sincronizados) del tiempo real con delays arbitrarios—. Captura el costo dominante de la *comunicación* y los desbalances entre nodos. En **centralizado** la comunicación es por memoria compartida en una sola máquina, así que el costo se reduce a contar pasos de CPU y accesos a memoria (complejidad computacional local); no se cuentan latencias de red ni distribución de carga.
+
+**¿Cómo está compuesto el estado interno de una entidad y cómo se modifica?**
+
+El estado interno `σ(x,t)` es el **contenido de los registros** de `x` más el **valor de su reloj** `c_x` en el instante `t`. Se modifica **solo por la ocurrencia de eventos**, y es **determinístico**: si `x` recibe el mismo evento en dos ejecuciones y su estado interno es igual en ambas, el nuevo estado también será igual. Ver [§17](#ambientes).
+
+#### Ej 5 — Diseño de sistemas
+
+**Venta de entradas para conciertos (esquema de transaccionalidad con 2PC)**
+
+Para que la venta sea **atómica y sin sobreventa** se usa **Commit en dos fases** entre los servicios críticos. **Coordinador:** el Sistema (habla con el cliente). **Participantes:** Inventario de butacas (estados: disponible/reservado/vendido) y Pago. Cada uno ejecuta una transacción local ACID en su propia BD.
+
+```mermaid
+sequenceDiagram
+    participant S as Sistema (coordinador)
+    participant I as Inventario
+    participant P as Pago
+    Note over S,P: el cliente elige asiento → Inventario lo reserva con TTL
+    Note over S,P: Fase PREPARE
+    S->>I: PREPARE(asientos)
+    I-->>S: VOTE_COMMIT (siguen reservados y sin expirar)
+    S->>P: PREPARE(tarjeta, monto)
+    P-->>S: VOTE_COMMIT (autorizado)
+    Note over S,P: Fase COMMIT
+    S->>I: COMMIT → butacas VENDIDAS
+    S->>P: COMMIT → captura de fondos
+    S->>S: genera y envía el PDF de entradas
+            
+```
+
+*Éxito: ambos votan COMMIT y el cliente recibe sus entradas. Falla (tarjeta rechazada): Pago vota ABORT → el Inventario libera la butaca (vuelve a disponible).*
+
+**Pseudocódigo Rust (actores): resultado parcial de una elección en tiempo real**
+
+Las mesas emiten votos concurrentemente; un contador central agrega los parciales sin locks (cada actor procesa un mensaje a la vez).
+
+```rust
+use actix::prelude::*;
+use std::collections::HashMap;
+
+#[derive(Message)] #[rtype(result = "()")]
+struct EmitirVoto { partido: String }
+
+#[derive(Message)] #[rtype(result = "()")]
+struct ContarBoletas { contador: Addr<ContadorActor> }
+
+#[derive(Message)] #[rtype(result = "()")]
+struct AgregarVotos { partido: String, votos: usize }
+
+// Una mesa acumula sus boletas y, cuando se lo piden, manda su conteo parcial.
+struct MesaActor { boletas: Vec<String> }
+impl Actor for MesaActor { type Context = Context<Self>; }
+
+impl Handler<EmitirVoto> for MesaActor {
+    type Result = ();
+    fn handle(&mut self, msg: EmitirVoto, _: &mut Context<Self>) {
+        self.boletas.push(msg.partido);            // voto entrante (concurrente)
+    }
+}
+impl Handler<ContarBoletas> for MesaActor {
+    type Result = ();
+    fn handle(&mut self, msg: ContarBoletas, _: &mut Context<Self>) {
+        let mut parcial: HashMap<String, usize> = HashMap::new();
+        for p in &self.boletas { *parcial.entry(p.clone()).or_insert(0) += 1; }
+        for (partido, votos) in parcial {
+            msg.contador.do_send(AgregarVotos { partido, votos });
+        }
+    }
+}
+
+// El contador central agrega los parciales de todas las mesas (estado privado).
+struct ContadorActor { votos: HashMap<String, usize> }
+impl Actor for ContadorActor { type Context = Context<Self>; }
+
+impl Handler<AgregarVotos> for ContadorActor {
+    type Result = ();
+    fn handle(&mut self, msg: AgregarVotos, _: &mut Context<Self>) {
+        *self.votos.entry(msg.partido).or_insert(0) += msg.votos;  // sin locks
+    }
+}
+```
+
 <a id="ejercicios"></a>
 
 ## B. Banco de ejercicios (parciales)
