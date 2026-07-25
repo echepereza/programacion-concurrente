@@ -1757,7 +1757,7 @@ Para actores se combina el **mocking** de actores con el patrón **given-when-th
 
 ## A. Finales resueltos y cómo resolverlos
 
-El final es **conceptual + modelado + diseño**: definir y comparar conceptos, modelar con Redes de Petri o actores, y diseñar un sistema justificando decisiones. Rara vez pide implementar de cero; casi siempre pide *explicar, comparar y justificar*.
+El final es **conceptual + modelado + diseño**: definir y comparar conceptos, modelar con Redes de Petri o actores, y diseñar un sistema justificando decisiones. Rara vez pide implementar de cero; casi siempre pide *explicar, comparar y justificar*. El banco de preguntas por tipo de ejercicio está en el [Anexo B](#ejercicios).
 
 Método para cualquier consigna:
 
@@ -1903,11 +1903,13 @@ reservado ≤ stock
 
 ). Mostrar esa integración es lo que distingue un buen final.
 
-### Banco de preguntas de final (con respuestas modelo)
+<a id="ejercicios"></a>
 
-Preguntas reales agrupadas como caen en el examen (Ej 1–5). Intentá responder antes de abrir la solución.
+## B. Banco de ejercicios y preguntas de final
 
-#### Ej 1 — Sección crítica y corrección
+Todo el banco de práctica **agrupado como caen los ejercicios en el examen (Ej 1–5)**: mezcla las preguntas conceptuales de **final** (con respuesta modelo) con los ejercicios prácticos de **parcial** resueltos. Intentá resolver antes de abrir la solución.
+
+### Ej 1 — Sección crítica y corrección
 
 **Definir el problema de la sección crítica: programa modelo y especificaciones de corrección**
 
@@ -1928,7 +1930,25 @@ Con un **timestamp único y global** por transacción al iniciar. Al bloquearse 
 - **Wait-Die:** si el que pide es más viejo, *espera*; si es más joven, *aborta* (muere) y reintenta. Impide que un joven espere por un viejo (no forma ciclo).
 - **Wound-Wait:** si el que pide es más viejo, *aborta al que tiene el recurso* (lo «hiere») para tomarlo; si es más joven, *espera*. Es *preemptive* y suele tener menos aborts/rollbacks.
 
-#### Ej 2 — Redes de Petri y fork-join
+**[Parcial] ¿Es busy-wait? Analizar fragmentos de código**
+
+**Regla:** es busy-wait solo si el loop *gira consumiendo CPU sin ceder ni hacer trabajo útil*.
+
+- Minero que en cada vuelta *mina*, escribe un resultado y hace `thread::sleep` → **NO** es busy-wait (hace trabajo útil y cede CPU).
+- Loop que toma un `write lock`, si acumuló ≥100 produce una batería, y duerme 500 ms → **NO** (duerme entre chequeos y produce cuando corresponde).
+- `loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }` → **NO** (reintenta con espera).
+- Loop que revisa vencimientos en una lista y hace `sleep` aleatorio entre pasadas → **NO**.
+- `loop { if *flag.lock() { break } }` sin sleep → **SÍ**, busy-wait (spin apretado).
+
+Ver la regla completa en [§8](#correccion).
+
+**[Parcial] Identificar la estructura y sus errores (Mutex + Condvar)**
+
+Un `struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }` con `function_1` (si `amount &lt;= 0` hace `wait`, luego `-= 1`) y `function_2` (`+= 1` y `notify_all`) es un **semáforo contador** (implementado como monitor).
+
+**Error:** usa `if *amount &lt;= 0 { wait }` en vez de `while`. Ante un **spurious wakeup** o varios waiters despertados por `notify_all`, un proceso puede seguir con `amount == 0` y decrementar a negativo. **Solución:** cambiar el `if` por `while`. (Ver [§10](#semaforos).)
+
+### Ej 2 — Modelos, fork-join y Redes de Petri
 
 **Red Ordinaria vs Red General de Petri**
 
@@ -1955,7 +1975,26 @@ Dos lugares para el buffer: uno de **ítems** (empieza vacío; el consumidor req
 
 **Fork-join**: dividir recursivamente en subtareas independientes, resolver en paralelo y combinar (determinístico, sin races, threads aislados). **Work stealing**: cada hilo tiene su *deque*; saca/encola en su propio extremo y, si se queda sin trabajo, roba del *otro* extremo de la cola de otro hilo. **Una sola cola global sería mala**: pasa a ser *estado mutable compartido* que necesita exclusión mutua; un hilo que encola muchas subtareas retiene el lock y hace esperar al resto → contención y latencia. Ver [§5](#forkjoin).
 
-#### Ej 3 — Redes y sockets
+**[Parcial] Programación asincrónica — Verdadero/Falso**
+
+- «El que hace poll es el thread principal» → **F** (lo hace el executor/runtime).
+- «poll se llama solo cuando la tarea puede progresar» → **V**.
+- «El modelo piñata es colaborativo» → **V** (cooperativo).
+- «La operación async inicia al llamar a la función `async`» → **F** (solo se crea el Future; arranca al primer poll/await).
+- «Procesos, hilos y tareas async tienen memoria independiente» → **F** (hilos y tareas comparten la del proceso).
+- «El scheduler del SO puede pausar una tarea async puntual» → **F** (las async son cooperativas, las maneja el executor).
+- «Threads y tareas async tienen stack propio» → **parcial**: el thread sí; la tarea async guarda su estado en el Future, no en un stack del SO dedicado.
+- «Con una sola CPU, hilos CPU-intensivos tardan mucho menos que tareas async con el mismo cómputo» → **F**: con cómputo puro no hay ventaja async; incluso los hilos pagan cambios de contexto.
+
+**[Parcial] Elegir el modelo de concurrencia por caso**
+
+Resuelto en la tabla de [§4](#modelos): matrices→SIMD/GPU; varias APIs→async; log muy visitado→async o RwLock; backend de juego→actores; muchos .DOC→.PDF→fork-join; Menti/Kahoot→actores; caché→RwLock; API con modelo NLP→async + `spawn_blocking`.
+
+**[Parcial] Modelar en Petri: productor-consumidor y lector-escritor**
+
+Productor-consumidor con buffer acotado: resuelto en [§12](#petri) (lugares `p5` ítems / `p6` huecos). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan **arcos inhibidores** que frenan a los lectores si hay un escritor esperando (ver [§11](#clasicos) y [§12](#petri)).
+
+### Ej 3 — Redes y sockets
 
 **Las 7 capas del modelo OSI**
 
@@ -1991,7 +2030,7 @@ Para video **en vivo** conviene **UDP** (la pérdida de paquetes se compensa con
 
 Ambos pueden ser sincrónicos o asincrónicos.
 
-#### Ej 4 — Ambientes distribuidos
+### Ej 4 — Ambientes distribuidos
 
 **Tipos de eventos en un ambiente distribuido**
 
@@ -2009,7 +2048,7 @@ En **distribuido** se mide por: **cantidad de mensajes** `M` (transmisiones), la
 
 El estado interno `σ(x,t)` es el **contenido de los registros** de `x` más el **valor de su reloj** `c_x` en el instante `t`. Se modifica **solo por la ocurrencia de eventos**, y es **determinístico**: si `x` recibe el mismo evento en dos ejecuciones y su estado interno es igual en ambas, el nuevo estado también será igual. Ver [§17](#ambientes).
 
-#### Ej 5 — Diseño de sistemas
+### Ej 5 — Diseño de sistemas
 
 **Venta de entradas para conciertos (esquema de transaccionalidad con 2PC)**
 
@@ -2085,46 +2124,11 @@ impl Handler<AgregarVotos> for ContadorActor {
 }
 ```
 
-<a id="ejercicios"></a>
+**[Parcial] Diseñar con actores: el restaurante de San Telmo**
 
-## B. Banco de ejercicios (parciales)
+Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de [§7](#mensajes). El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican `PlatoListo` a los mozos.
 
-Ejercicios reales de parcial con su resolución. Intentá resolverlos *antes* de abrir la solución.
-
-**1. ¿Es busy-wait? Analizar fragmentos de código**
-
-**Regla:** es busy-wait solo si el loop *gira consumiendo CPU sin ceder ni hacer trabajo útil*.
-
-- Minero que en cada vuelta *mina*, escribe un resultado y hace `thread::sleep` → **NO** es busy-wait (hace trabajo útil y cede CPU).
-- Loop que toma un `write lock`, si acumuló ≥100 produce una batería, y duerme 500 ms → **NO** (duerme entre chequeos y produce cuando corresponde).
-- `loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }` → **NO** (reintenta con espera).
-- Loop que revisa vencimientos en una lista y hace `sleep` aleatorio entre pasadas → **NO**.
-- `loop { if *flag.lock() { break } }` sin sleep → **SÍ**, busy-wait (spin apretado).
-
-Ver la regla completa en [§8](#correccion).
-
-**2. Identificar la estructura y sus errores (Mutex + Condvar)**
-
-Un `struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }` con `function_1` (si `amount &lt;= 0` hace `wait`, luego `-= 1`) y `function_2` (`+= 1` y `notify_all`) es un **semáforo contador** (implementado como monitor).
-
-**Error:** usa `if *amount &lt;= 0 { wait }` en vez de `while`. Ante un **spurious wakeup** o varios waiters despertados por `notify_all`, un proceso puede seguir con `amount == 0` y decrementar a negativo. **Solución:** cambiar el `if` por `while`. (Ver [§10](#semaforos).)
-
-**3. Programación asincrónica — Verdadero/Falso**
-
-- «El que hace poll es el thread principal» → **F** (lo hace el executor/runtime).
-- «poll se llama solo cuando la tarea puede progresar» → **V**.
-- «El modelo piñata es colaborativo» → **V** (cooperativo).
-- «La operación async inicia al llamar a la función `async`» → **F** (solo se crea el Future; arranca al primer poll/await).
-- «Procesos, hilos y tareas async tienen memoria independiente» → **F** (hilos y tareas comparten la del proceso).
-- «El scheduler del SO puede pausar una tarea async puntual» → **F** (las async son cooperativas, las maneja el executor).
-- «Threads y tareas async tienen stack propio» → **parcial**: el thread sí; la tarea async guarda su estado en el Future, no en un stack del SO dedicado.
-- «Con una sola CPU, hilos CPU-intensivos tardan mucho menos que tareas async con el mismo cómputo» → **F**: con cómputo puro no hay ventaja async; incluso los hilos pagan cambios de contexto.
-
-**4. Elegir el modelo de concurrencia por caso**
-
-Resuelto en la tabla de [§4](#modelos): matrices→SIMD/GPU; varias APIs→async; log muy visitado→async o RwLock; backend de juego→actores; muchos .DOC→.PDF→fork-join; Menti/Kahoot→actores; caché→RwLock; API con modelo NLP→async + `spawn_blocking`.
-
-**5. Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio**
+**[Parcial] Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio**
 
 ```rust
 use std::sync::{Arc, Mutex};
@@ -2153,14 +2157,6 @@ let promedio = *total.lock().unwrap() / 100; // tiempo promedio
 ```
 
 El **semáforo** acota los threads activos (baja latencia); el `Arc&lt;Mutex&gt;` acumula los tiempos. Como es I/O simulada, una variante idiomática sería **async** con un límite de concurrencia.
-
-**6. Modelar en Petri: productor-consumidor y lector-escritor**
-
-Productor-consumidor con buffer acotado: resuelto en [§12](#petri) (lugares `Libres`/`Ocupados`). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan **arcos inhibidores** que frenan a los lectores si hay un escritor esperando (ver [§11](#clasicos) y [§12](#petri)).
-
-**7. Diseñar con actores: el restaurante de San Telmo**
-
-Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de [§7](#mensajes). El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican `PlatoListo` a los mozos.
 
 <a id="glosario"></a>
 

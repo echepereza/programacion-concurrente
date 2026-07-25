@@ -1025,7 +1025,7 @@
     <div class="nav-title">Anexos</div>
     <nav class="toc" aria-label="Anexos">
       <a href="#finales"><span>A</span>Finales resueltos</a>
-      <a href="#ejercicios"><span>B</span>Banco de ejercicios</a>
+      <a href="#ejercicios"><span>B</span>Banco de ejercicios y preguntas</a>
       <a href="#glosario"><span>C</span>Glosario</a>
     </nav>
 
@@ -2417,13 +2417,13 @@ mod tests {
         <p class="exam-answer"><strong>Para el final/TP:</strong> saber que <code>#[cfg(test)]</code> compila los tests solo en modo test, que se mockea con <code>mockall</code> gracias a la inyección de dependencias, y sobre todo que <strong>Loom</strong> valida la corrección concurrente explorando los interleavings —lo que a mano es inviable—.</p>
       </section>
 
-<section class="chapter" id="finales" data-title="finales resueltos examen final metodo plantilla como resolver 16 julio 2026 09 julio 2026 diseño de sistema venta online sobreventa transaccionalidad secuencia pseudocodigo actores banco de preguntas seccion critica programa modelo correccion safety liveness deadlock wait-die wound-wait grafo de alcance osi capas sockets streaming tcp udp channels unix ambientes distribuidos costo complejidad estado interno entradas conciertos 2pc votos eleccion mesa contador">
+<section class="chapter" id="finales" data-title="finales resueltos examen final metodo plantilla como resolver 16 julio 2026 09 julio 2026 diseño de sistema venta online sobreventa transaccionalidad reserva stock secuencia pseudocodigo actores producto SKU">
         <div class="chapter-head">
           <div class="chapter-number">A</div>
           <div><h2>Finales resueltos y cómo resolverlos</h2></div>
         </div>
 
-        <p>El final es <strong>conceptual + modelado + diseño</strong>: definir y comparar conceptos, modelar con Redes de Petri o actores, y diseñar un sistema justificando decisiones. Rara vez pide implementar de cero; casi siempre pide <em>explicar, comparar y justificar</em>.</p>
+        <p>El final es <strong>conceptual + modelado + diseño</strong>: definir y comparar conceptos, modelar con Redes de Petri o actores, y diseñar un sistema justificando decisiones. Rara vez pide implementar de cero; casi siempre pide <em>explicar, comparar y justificar</em>. El banco de preguntas por tipo de ejercicio está en el <a href="#ejercicios">Anexo B</a>.</p>
 
         <div class="callout"><strong>Método para cualquier consigna:</strong> (1) <strong>Definí</strong> el concepto con precisión. (2) <strong>Contrastá</strong> con lo vecino (semáforo vs monitor, 2PL vs optimista, deadlock vs starvation). (3) <strong>Ejemplificá</strong> o <strong>modelá</strong> (diagrama). (4) <strong>Justificá</strong> la elección para el caso concreto (¿CPU o I/O?, ¿alta o baja contención?, ¿qué invariante garantiza la seguridad?).</div>
 
@@ -2526,11 +2526,16 @@ impl Handler&lt;Reservar&gt; for Producto {
 }
 // Confirmar: stock -= qty; reservado -= qty.   Liberar: reservado -= qty.</code></pre>
         <div class="callout blue">Este diseño combina tres temas del programa: <strong>actores</strong> (§7, aislamiento sin locks), <strong>transaccionalidad</strong> (§13, reserva + rollback) y el <strong>invariante de capacidad</strong> de las <strong>Redes de Petri</strong> (§12, <code>reservado ≤ stock</code>). Mostrar esa integración es lo que distingue un buen final.</div>
+      </section>
 
-        <h3>Banco de preguntas de final (con respuestas modelo)</h3>
-        <p>Preguntas reales agrupadas como caen en el examen (Ej 1–5). Intentá responder antes de abrir la solución.</p>
+      <section class="chapter" id="ejercicios" data-title="banco de ejercicios preguntas de final parciales resueltos por tipo de ejercicio busy wait analisis codigo semaforo condvar if while spurious wakeup verdadero falso async elegir modelo pseudocodigo N threads productor consumidor lector escritor petri restaurante actores seccion critica programa modelo correccion safety liveness deadlock wait-die wound-wait grafo de alcance fork join work stealing osi capas sockets streaming tcp udp channels unix ambientes distribuidos eventos ring costo complejidad estado interno entradas conciertos 2pc votos eleccion mesa contador">
+        <div class="chapter-head">
+          <div class="chapter-number">B</div>
+          <div><h2>Banco de ejercicios y preguntas de final</h2></div>
+        </div>
+        <p>Todo el banco de práctica <strong>agrupado como caen los ejercicios en el examen (Ej 1–5)</strong>: mezcla las preguntas conceptuales de <strong>final</strong> (con respuesta modelo) con los ejercicios prácticos de <strong>parcial</strong> resueltos. Intentá resolver antes de abrir la solución.</p>
 
-        <h4>Ej 1 — Sección crítica y corrección</h4>
+        <h3>Ej 1 — Sección crítica y corrección</h3>
         <details>
           <summary>Definir el problema de la sección crítica: programa modelo y especificaciones de corrección</summary>
           <p>El <strong>programa modelo</strong> es el esquema abstracto de cada proceso: un <strong>ciclo infinito</strong> cuyo código se divide en <em>parte crítica</em> (accede a recursos compartidos) y <em>parte no-crítica</em>. La <strong>sección crítica</strong> debe progresar y finalizar eventualmente. Especificaciones: <strong>exclusión mutua</strong> (sus instrucciones no se intercalan), <strong>ausencia de deadlock</strong> (si dos intentan entrar, al menos uno lo logra) y <strong>ausencia de starvation</strong> (si un proceso intenta entrar, eventualmente entra). Ver <a href="#correccion">§8</a>.</p>
@@ -2551,8 +2556,25 @@ impl Handler&lt;Reservar&gt; for Producto {
             <li><strong>Wound-Wait:</strong> si el que pide es más viejo, <em>aborta al que tiene el recurso</em> (lo «hiere») para tomarlo; si es más joven, <em>espera</em>. Es <em>preemptive</em> y suele tener menos aborts/rollbacks.</li>
           </ul>
         </details>
+        <details>
+          <summary>[Parcial] ¿Es busy-wait? Analizar fragmentos de código</summary>
+          <p><strong>Regla:</strong> es busy-wait solo si el loop <em>gira consumiendo CPU sin ceder ni hacer trabajo útil</em>.</p>
+          <ul class="study-list">
+            <li>Minero que en cada vuelta <em>mina</em>, escribe un resultado y hace <code>thread::sleep</code> → <strong>NO</strong> es busy-wait (hace trabajo útil y cede CPU).</li>
+            <li>Loop que toma un <code>write lock</code>, si acumuló ≥100 produce una batería, y duerme 500 ms → <strong>NO</strong> (duerme entre chequeos y produce cuando corresponde).</li>
+            <li><code>loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }</code> → <strong>NO</strong> (reintenta con espera).</li>
+            <li>Loop que revisa vencimientos en una lista y hace <code>sleep</code> aleatorio entre pasadas → <strong>NO</strong>.</li>
+            <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait (spin apretado).</li>
+          </ul>
+          <p>Ver la regla completa en <a href="#correccion">§8</a>.</p>
+        </details>
+        <details>
+          <summary>[Parcial] Identificar la estructura y sus errores (Mutex + Condvar)</summary>
+          <p>Un <code>struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }</code> con <code>function_1</code> (si <code>amount &lt;= 0</code> hace <code>wait</code>, luego <code>-= 1</code>) y <code>function_2</code> (<code>+= 1</code> y <code>notify_all</code>) es un <strong>semáforo contador</strong> (implementado como monitor).</p>
+          <p><strong>Error:</strong> usa <code>if *amount &lt;= 0 { wait }</code> en vez de <code>while</code>. Ante un <strong>spurious wakeup</strong> o varios waiters despertados por <code>notify_all</code>, un proceso puede seguir con <code>amount == 0</code> y decrementar a negativo. <strong>Solución:</strong> cambiar el <code>if</code> por <code>while</code>. (Ver <a href="#semaforos">§10</a>.)</p>
+        </details>
 
-        <h4>Ej 2 — Redes de Petri y fork-join</h4>
+        <h3>Ej 2 — Modelos, fork-join y Redes de Petri</h3>
         <details>
           <summary>Red Ordinaria vs Red General de Petri</summary>
           <p>Ambas son grafos dirigidos bipartitos. <strong>Ordinaria</strong>: <code>PN=(T,P,A)</code> (transiciones, lugares, arcos). <strong>General</strong>: agrega <code>W: A→N</code> (peso de cada arco) y <code>M0</code> (marca inicial): <code>PN=(T,P,A,W,M0)</code>. Regla de disparo general: <code>t</code> habilitada si <code>M(p) ≥ W(p,t)</code> para toda entrada; al disparar consume <code>W(p,t)</code> y produce <code>W(t,p')</code>. Ver <a href="#petri">§12</a>.</p>
@@ -2577,8 +2599,29 @@ flowchart LR
           <summary>Fork-join, work stealing, y ¿por qué NO una única cola de tareas?</summary>
           <p><strong>Fork-join</strong>: dividir recursivamente en subtareas independientes, resolver en paralelo y combinar (determinístico, sin races, threads aislados). <strong>Work stealing</strong>: cada hilo tiene su <em>deque</em>; saca/encola en su propio extremo y, si se queda sin trabajo, roba del <em>otro</em> extremo de la cola de otro hilo. <strong>Una sola cola global sería mala</strong>: pasa a ser <em>estado mutable compartido</em> que necesita exclusión mutua; un hilo que encola muchas subtareas retiene el lock y hace esperar al resto → contención y latencia. Ver <a href="#forkjoin">§5</a>.</p>
         </details>
+        <details>
+          <summary>[Parcial] Programación asincrónica — Verdadero/Falso</summary>
+          <ul class="study-list">
+            <li>«El que hace poll es el thread principal» → <strong>F</strong> (lo hace el executor/runtime).</li>
+            <li>«poll se llama solo cuando la tarea puede progresar» → <strong>V</strong>.</li>
+            <li>«El modelo piñata es colaborativo» → <strong>V</strong> (cooperativo).</li>
+            <li>«La operación async inicia al llamar a la función <code>async</code>» → <strong>F</strong> (solo se crea el Future; arranca al primer poll/await).</li>
+            <li>«Procesos, hilos y tareas async tienen memoria independiente» → <strong>F</strong> (hilos y tareas comparten la del proceso).</li>
+            <li>«El scheduler del SO puede pausar una tarea async puntual» → <strong>F</strong> (las async son cooperativas, las maneja el executor).</li>
+            <li>«Threads y tareas async tienen stack propio» → <strong>parcial</strong>: el thread sí; la tarea async guarda su estado en el Future, no en un stack del SO dedicado.</li>
+            <li>«Con una sola CPU, hilos CPU-intensivos tardan mucho menos que tareas async con el mismo cómputo» → <strong>F</strong>: con cómputo puro no hay ventaja async; incluso los hilos pagan cambios de contexto.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>[Parcial] Elegir el modelo de concurrencia por caso</summary>
+          <p>Resuelto en la tabla de <a href="#modelos">§4</a>: matrices→SIMD/GPU; varias APIs→async; log muy visitado→async o RwLock; backend de juego→actores; muchos .DOC→.PDF→fork-join; Menti/Kahoot→actores; caché→RwLock; API con modelo NLP→async + <code>spawn_blocking</code>.</p>
+        </details>
+        <details>
+          <summary>[Parcial] Modelar en Petri: productor-consumidor y lector-escritor</summary>
+          <p>Productor-consumidor con buffer acotado: resuelto en <a href="#petri">§12</a> (lugares <code>p5</code> ítems / <code>p6</code> huecos). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan <strong>arcos inhibidores</strong> que frenan a los lectores si hay un escritor esperando (ver <a href="#clasicos">§11</a> y <a href="#petri">§12</a>).</p>
+        </details>
 
-        <h4>Ej 3 — Redes y sockets</h4>
+        <h3>Ej 3 — Redes y sockets</h3>
         <details>
           <summary>Las 7 capas del modelo OSI</summary>
           <div class="table-wrap"><table>
@@ -2619,7 +2662,7 @@ flowchart LR
           <p>Ambos pueden ser sincrónicos o asincrónicos.</p>
         </details>
 
-        <h4>Ej 4 — Ambientes distribuidos</h4>
+        <h3>Ej 4 — Ambientes distribuidos</h3>
         <details>
           <summary>Tipos de eventos en un ambiente distribuido</summary>
           <p>La entidad es <strong>reactiva</strong> (solo responde a eventos externos): (1) <strong>llegada de un mensaje</strong> de otra entidad; (2) <strong>activación del reloj local</strong> (vencimiento de un temporizador propio); (3) <strong>impulso espontáneo</strong> (evento interno que la entidad genera sin estímulo externo, para iniciar actividad autónoma). Ver <a href="#ambientes">§17</a>.</p>
@@ -2637,7 +2680,7 @@ flowchart LR
           <p>El estado interno <code>σ(x,t)</code> es el <strong>contenido de los registros</strong> de <code>x</code> más el <strong>valor de su reloj</strong> <code>c_x</code> en el instante <code>t</code>. Se modifica <strong>solo por la ocurrencia de eventos</strong>, y es <strong>determinístico</strong>: si <code>x</code> recibe el mismo evento en dos ejecuciones y su estado interno es igual en ambas, el nuevo estado también será igual. Ver <a href="#ambientes">§17</a>.</p>
         </details>
 
-        <h4>Ej 5 — Diseño de sistemas</h4>
+        <h3>Ej 5 — Diseño de sistemas</h3>
         <details>
           <summary>Venta de entradas para conciertos (esquema de transaccionalidad con 2PC)</summary>
           <p>Para que la venta sea <strong>atómica y sin sobreventa</strong> se usa <strong>Commit en dos fases</strong> entre los servicios críticos. <strong>Coordinador:</strong> el Sistema (habla con el cliente). <strong>Participantes:</strong> Inventario de butacas (estados: disponible/reservado/vendido) y Pago. Cada uno ejecuta una transacción local ACID en su propia BD.</p>
@@ -2708,55 +2751,12 @@ impl Handler&lt;AgregarVotos&gt; for ContadorActor {
     }
 }</code></pre>
         </details>
-      </section>
-
-      <section class="chapter" id="ejercicios" data-title="banco de ejercicios parciales resueltos busy wait analisis codigo semaforo condvar if while spurious wakeup verdadero falso async elegir modelo pseudocodigo N threads productor consumidor lector escritor petri restaurante actores">
-        <div class="chapter-head">
-          <div class="chapter-number">B</div>
-          <div><h2>Banco de ejercicios (parciales)</h2></div>
-        </div>
-        <p>Ejercicios reales de parcial con su resolución. Intentá resolverlos <em>antes</em> de abrir la solución.</p>
-
         <details>
-          <summary>1. ¿Es busy-wait? Analizar fragmentos de código</summary>
-          <p><strong>Regla:</strong> es busy-wait solo si el loop <em>gira consumiendo CPU sin ceder ni hacer trabajo útil</em>.</p>
-          <ul class="study-list">
-            <li>Minero que en cada vuelta <em>mina</em>, escribe un resultado y hace <code>thread::sleep</code> → <strong>NO</strong> es busy-wait (hace trabajo útil y cede CPU).</li>
-            <li>Loop que toma un <code>write lock</code>, si acumuló ≥100 produce una batería, y duerme 500 ms → <strong>NO</strong> (duerme entre chequeos y produce cuando corresponde).</li>
-            <li><code>loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }</code> → <strong>NO</strong> (reintenta con espera).</li>
-            <li>Loop que revisa vencimientos en una lista y hace <code>sleep</code> aleatorio entre pasadas → <strong>NO</strong>.</li>
-            <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait (spin apretado).</li>
-          </ul>
-          <p>Ver la regla completa en <a href="#correccion">§8</a>.</p>
+          <summary>[Parcial] Diseñar con actores: el restaurante de San Telmo</summary>
+          <p>Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de <a href="#mensajes">§7</a>. El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican <code>PlatoListo</code> a los mozos.</p>
         </details>
-
         <details>
-          <summary>2. Identificar la estructura y sus errores (Mutex + Condvar)</summary>
-          <p>Un <code>struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }</code> con <code>function_1</code> (si <code>amount &lt;= 0</code> hace <code>wait</code>, luego <code>-= 1</code>) y <code>function_2</code> (<code>+= 1</code> y <code>notify_all</code>) es un <strong>semáforo contador</strong> (implementado como monitor).</p>
-          <p><strong>Error:</strong> usa <code>if *amount &lt;= 0 { wait }</code> en vez de <code>while</code>. Ante un <strong>spurious wakeup</strong> o varios waiters despertados por <code>notify_all</code>, un proceso puede seguir con <code>amount == 0</code> y decrementar a negativo. <strong>Solución:</strong> cambiar el <code>if</code> por <code>while</code>. (Ver <a href="#semaforos">§10</a>.)</p>
-        </details>
-
-        <details>
-          <summary>3. Programación asincrónica — Verdadero/Falso</summary>
-          <ul class="study-list">
-            <li>«El que hace poll es el thread principal» → <strong>F</strong> (lo hace el executor/runtime).</li>
-            <li>«poll se llama solo cuando la tarea puede progresar» → <strong>V</strong>.</li>
-            <li>«El modelo piñata es colaborativo» → <strong>V</strong> (cooperativo).</li>
-            <li>«La operación async inicia al llamar a la función <code>async</code>» → <strong>F</strong> (solo se crea el Future; arranca al primer poll/await).</li>
-            <li>«Procesos, hilos y tareas async tienen memoria independiente» → <strong>F</strong> (hilos y tareas comparten la del proceso).</li>
-            <li>«El scheduler del SO puede pausar una tarea async puntual» → <strong>F</strong> (las async son cooperativas, las maneja el executor).</li>
-            <li>«Threads y tareas async tienen stack propio» → <strong>parcial</strong>: el thread sí; la tarea async guarda su estado en el Future, no en un stack del SO dedicado.</li>
-            <li>«Con una sola CPU, hilos CPU-intensivos tardan mucho menos que tareas async con el mismo cómputo» → <strong>F</strong>: con cómputo puro no hay ventaja async; incluso los hilos pagan cambios de contexto.</li>
-          </ul>
-        </details>
-
-        <details>
-          <summary>4. Elegir el modelo de concurrencia por caso</summary>
-          <p>Resuelto en la tabla de <a href="#modelos">§4</a>: matrices→SIMD/GPU; varias APIs→async; log muy visitado→async o RwLock; backend de juego→actores; muchos .DOC→.PDF→fork-join; Menti/Kahoot→actores; caché→RwLock; API con modelo NLP→async + <code>spawn_blocking</code>.</p>
-        </details>
-
-        <details>
-          <summary>5. Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio</summary>
+          <summary>[Parcial] Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio</summary>
           <pre class="code" data-lang="rust"><code>use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -2781,16 +2781,6 @@ for url in links {
 for h in handles { h.join().unwrap(); }
 let promedio = *total.lock().unwrap() / 100; // tiempo promedio</code></pre>
           <p>El <strong>semáforo</strong> acota los threads activos (baja latencia); el <code>Arc&lt;Mutex&gt;</code> acumula los tiempos. Como es I/O simulada, una variante idiomática sería <strong>async</strong> con un límite de concurrencia.</p>
-        </details>
-
-        <details>
-          <summary>6. Modelar en Petri: productor-consumidor y lector-escritor</summary>
-          <p>Productor-consumidor con buffer acotado: resuelto en <a href="#petri">§12</a> (lugares <code>Libres</code>/<code>Ocupados</code>). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan <strong>arcos inhibidores</strong> que frenan a los lectores si hay un escritor esperando (ver <a href="#clasicos">§11</a> y <a href="#petri">§12</a>).</p>
-        </details>
-
-        <details>
-          <summary>7. Diseñar con actores: el restaurante de San Telmo</summary>
-          <p>Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de <a href="#mensajes">§7</a>. El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican <code>PlatoListo</code> a los mozos.</p>
         </details>
       </section>
 
