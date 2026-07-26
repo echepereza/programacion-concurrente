@@ -53,6 +53,16 @@ loop {
     if *listo.lock().unwrap() { break; }           // spin apretado -> quema CPU
 }</pre>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Programa modelo de la SC:</strong> la definición formal es un <em>loop infinito</em> con parte crítica y parte NO crítica. La SC exige progreso/finalización; la no-crítica <em>no</em> (podés loopear ahí sin molestar). Si te piden «definir la sección crítica», explicá el programa modelo.</li>
+            <li><strong>TOCTOU</strong> (<em>time-of-check-to-time-of-use</em>): leer una variable, decidir con un <code>if</code> y actuar deja una ventana donde el valor cambia (race más sutil que el contador). Fix: no soltar el lock entre el chequeo y el uso.</li>
+            <li><strong><code>try_read</code>/<code>try_write</code> en loop = busy-wait:</strong> no bloquean; reintentarlos es espera activa (prohibida). Y meter un <code>sleep</code> en el loop de chequeo <em>sigue siendo</em> espera activa: re-evaluás la condición arbitrariamente.</li>
+            <li><strong>Sección crítica lo más chica posible:</strong> favorece el paralelismo y baja la probabilidad de un panic con el lock tomado (que envenenaría el lock).</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «explicar y comparar busy-wait, deadlock, race condition y starvation». Ejes para ordenar la respuesta: (1) ¿consume CPU inútilmente? → busy-wait; (2) ¿resultado depende del timing? → race; (3) ¿todos trabados esperándose? → deadlock; (4) ¿uno queda postergado para siempre mientras el resto avanza? → starvation.</p>
       </section>
 
@@ -99,6 +109,16 @@ let datos = RwLock::new(vec![1, 2, 3]);
 } // se libera el guard de escritura (Drop)</pre>
         <div class="callout danger"><strong>Locks envenenados (poisoned):</strong> si un thread que tomó el lock de forma <em>exclusiva</em> hace <code>panic!</code> mientras lo tiene, el lock queda <strong>envenenado</strong>: las llamadas posteriores a <code>read()</code>/<code>write()</code> devuelven <code>Err</code>. Es la razón por la que en Rust casi siempre ves <code>.lock().unwrap()</code>: estás propagando (o manejando) ese posible envenenamiento.</div>
         <p><strong>Mutex</strong> es el caso exclusivo puro (equivalente a un lock de escritura o semáforo binario). El patrón para mutar estado compartido entre hilos es <code>Arc&lt;Mutex&lt;T&gt;&gt;</code> (compartir + serializar).</p>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Tipos atómicos:</strong> <code>Arc&lt;AtomicUsize&gt;</code> permite mutar <em>sin</em> <code>Mutex</code> porque <code>fetch_add</code>/<code>fetch_sub</code> son atómicas por hardware; el <code>Ordering</code> (default <code>SeqCst</code>, el más estricto) fija el orden de memoria. El propio contador interno de <code>Arc</code> también es atómico.</li>
+            <li><strong>Self-deadlock:</strong> pedir <code>write()</code> teniendo un <code>read()</code> vivo en el <em>mismo</em> hilo se traba; Rust lo detecta solo por ser determinístico (un thread), no con varios.</li>
+            <li><strong>Granularidad del lock:</strong> el patrón es dos secciones críticas cortas —leer al inicio, escribir al final— con el <em>trabajo real fuera</em> del lock. Si los hilos viven dentro de la SC, todo se serializa y no tiene sentido tener varios.</li>
+            <li><strong><code>fcntl</code> con rangos de bytes:</strong> lockea un registro de tamaño fijo sin bloquear el resto del archivo; <code>flock</code>/<code>lockf</code> son más simples pero sin rangos.</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> diferencia shared vs exclusive, por qué los locks de Unix son <em>advisory</em>, y el patrón RAII: el guard libera solo → menos bugs de «me olvidé el <code>unlock()</code>». Mencionar poisoning como propiedad de seguridad de Rust.</p>
       </section>

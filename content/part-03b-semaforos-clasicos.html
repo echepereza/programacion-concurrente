@@ -87,6 +87,16 @@ impl Semaforo {
     }
 }</pre>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong><code>signal</code> despierta a uno al AZAR:</strong> <code>L</code> es un <em>conjunto</em> sin orden (ni FIFO ni prioridad). Esa arbitrariedad es, por diseño, lo que evita <em>starvation</em> (es equitativo). «Señalizar» viene de los semáforos ferroviarios; <code>P</code>/<code>V</code> son wait/signal en holandés (Dijkstra).</li>
+            <li><strong>System V vs POSIX:</strong> System V guarda info de control extra (PID del último, cuántos esperan, y cuántos esperan a que el contador llegue a 0). Ese último dato habilita <code>wait_for_0</code> (bloquear hasta 0) → una <em>barrera casera</em>.</li>
+            <li><strong>En Rust el semáforo es un crate externo</strong> (<code>std-semaphore</code>): <code>acquire</code>=wait, <code>release</code>=signal, <code>access</code> devuelve una guarda con auto-release (RAII). OJO: <code>access</code> NO sirve en productor-consumidor, porque ahí el <code>signal</code> ocurre en <em>otro</em> proceso que el <code>wait</code>.</li>
+            <li><strong>Tip de examen:</strong> en pseudocódigo con semáforos, <em>especificá siempre las condiciones iniciales</em> del contador. Con N productores/consumidores siguen siendo <strong>solo 2 semáforos</strong> (la cantidad de recurso es la misma) + 1 mutex para el buffer.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «describir cómo se implementan los monitores y sus métodos, y compararlos con semáforos». Puntos que no pueden faltar: variables de condición sin valor + FIFO; <code>waitC</code> siempre bloquea y libera el monitor; <code>signalC</code> no hace nada si la cola está vacía; y el <code>while</code> por spurious wakeup. Reconocer que <code>Mutex + Condvar</code> = monitor/semáforo.</p>
       </section>
 
@@ -162,6 +172,15 @@ flowchart LR
           <li><strong>Fair:</strong> se respeta un orden (p. ej. FIFO) para que ninguno se muera de hambre.</li>
         </ul>
         <div class="callout blue">Es exactamente lo que ofrece <code>RwLock</code> (capítulo 09): <code>read()</code> = lock compartido, <code>write()</code> = lock exclusivo. La política de preferencia depende del SO.</div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Lector-escritor <em>fair</em> con cola de turnos:</strong> condvar + turno actual/próximo + contador de lectores + bool <code>writing</code>. Cada uno «saca número» al llegar; el lector, al entrar, <em>avanza</em> el turno (deja pasar a otro lector concurrente), el escritor <em>no</em> lo avanza (frena al escritor de atrás). Resuelve starvation de ambos lados (como el turnero de la farmacia).</li>
+            <li><strong>Barbero = rendezvous de dos semáforos invertidos:</strong> <code>acquire</code> en un thread / <code>release</code> en el otro (y viceversa); el barbero «duerme» en <code>acquire(clientes)</code> con el contador en 0.</li>
+            <li><strong>SETI/fork-join con barreras:</strong> hacen falta <em>dos</em> barreras por época —una para que todos empiecen recién cuando todos leyeron la señal, y otra para esperar que todos hayan leído antes de modificarla—. Ser <em>líder</em> de la barrera NO garantiza seguir ejecutando (podés ceder la CPU justo después).</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el parcial:</strong> te dan una red de Petri o un fragmento de código y tenés que <strong>reconocer el problema</strong> (casi siempre productor-consumidor o lector-escritor) y decir si la implementación es correcta o cómo mejorarla. Memorizá los semáforos de cada uno: <code>notEmpty</code>/<code>notFull</code> para productor-consumidor acotado.</p>
       </section>

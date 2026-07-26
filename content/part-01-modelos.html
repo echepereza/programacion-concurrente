@@ -51,6 +51,26 @@
           </table></div>
         </details>
 
+        <h3>Los mismos modelos en otros lenguajes</h3>
+        <p>La cátedra cierra mostrando que estos modelos son «ciudadanos de primera clase» en otros lenguajes (útil para ubicar cada modelo):</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Lenguaje</th><th>Modelo</th><th>Rasgos</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Go</strong></td><td>Canales (CSP)</td><td><em>goroutines</em> (green threads, stack de 2 KB que crece) + <em>channels</em>; «no comuniques compartiendo memoria; compartí memoria comunicando»; no tiene manejo de errores.</td></tr>
+            <tr><td><strong>Erlang / Elixir</strong></td><td>Actores</td><td>Procesos sobre la BEAM VM; «let it crash» + <em>supervisores</em> (OTP/GenServer). Lo usan WhatsApp y Discord.</td></tr>
+            <tr><td><strong>Clojure</strong></td><td>Memoria transaccional</td><td><em>Software Transactional Memory</em> (STM); dialecto de Lisp sobre la JVM.</td></tr>
+            <tr><td><strong>Julia</strong></td><td>Datos / paralelo</td><td>Cómputo científico; green threads + <strong>SIMD</strong> de fábrica; sintaxis tipo Python.</td></tr>
+          </tbody>
+        </table></div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Modelo ≠ herramienta:</strong> «productor-consumidor» y «threads» son <em>idioms</em>, no modelos. En el examen nombrá <strong>uno de los 5 modelos</strong> y justificá (navaja de Ockham). <code>SyncArbiter</code> es <em>implementación</em> (fork-join), no una respuesta de diseño; ofrecerlo como «solución mágica» descalifica.</li>
+            <li><strong>Fork-join: divisible es necesario pero no suficiente</strong> — además pide cómputo <em>CPU-intensivo</em>. «N APIs» es un fork por llamada pero se resuelve con <strong>async</strong> (es espera). «Procesar logs muy concurridos» = fork-join/MapReduce («muy concurrido» = genera muchos logs, no tiempo real); si fuera en vivo → un actor contador.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el parcial:</strong> siempre justificar con <em>CPU-bound vs I/O-bound</em> y con «¿hay estado compartido que serializar o entidades que se comunican?». No basta nombrar el modelo: hay que dar ventaja y desventaja y decir cuál elegirías.</p>
       </section>
 
@@ -131,6 +151,17 @@ flowchart LR
           </div>
           <figcaption>Word Count como <strong>DAG</strong> (el «Hello World» de MapReduce, con Rayon): <code>read_dir → flat_map(lines) → map(contar) → reduce</code> en árbol. El <em>map</em> procesa cada línea en paralelo; el <em>reduce</em> combina los conteos parciales de a pares hasta el resultado final.</figcaption>
         </figure>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Por qué se roba del INICIO de la deque</strong> (el docente avisa que «esta la tomo mucho y la responden mal»): el dueño trabaja su cola como <em>pila</em> (saca del <em>final</em>, las más nuevas); el ladrón roba del <em>inicio</em> (la más vieja), que está más arriba en el árbol de recursión → en promedio es la tarea <em>más grande</em> → robar grande minimiza la cantidad de robos/sincronización con colas ajenas.</li>
+            <li><strong>Granularidad de las tareas:</strong> demasiado finas (1 tarea por píxel) corren <em>peor</em> que en serie por overhead de crear/context-switch; demasiado gruesas dejan CPUs ociosas si son dispares. Óptimo: <em>shards</em> de tamaño uniforme. (1 por fila fue 10× más rápido que 1 por píxel.)</li>
+            <li><strong>API real:</strong> <code>rayon::join(a, b)</code> corre dos closures en paralelo y devuelve <code>(retA, retB)</code>; <code>std::thread::scope</code> existe en la std desde 1.63; <code>crossbeam::scope</code> devuelve <code>Err</code> si algún thread paniqueó. <strong>Nunca <code>unwrap</code></strong> en <code>JoinHandle::join</code>: manejá el panic (loggear y seguir).</li>
+            <li><strong><code>reduce</code> con fábrica:</strong> el valor inicial va como <em>closure</em>, no como valor, porque cada reducción concurrente necesita <em>su propio</em> acumulador (un solo <code>HashMap</code> sería escritura concurrente).</li>
+            <li><strong>GPU vs CPU:</strong> la CPU minimiza <em>latencia</em> (cachés, branch prediction, pocos hilos); la GPU maximiza <em>throughput</em> (misma instrucción sobre millones de datos, esconde la RAM lenta corriendo otro hilo). La copia host↔device suele <em>dominar</em> el tiempo → «viví en la GPU». La cátedra programa GPU con <strong>WebGPU/WGSL</strong> (no solo CUDA); un <em>workgroup</em> ≈ warp ≈ SIMD group, óptimo si es múltiplo de 32.</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> propiedades de fork-join (determinístico, sin races, aislado), qué es work stealing (deque, robar del inicio de otra cola) y por qué SIMD/GPU sirven para «mismo cómputo sobre muchos datos independientes» y no para lógica con estado compartido.</p>
       </section>
@@ -217,6 +248,16 @@ flowchart LR
           <div class="callout danger"><strong>No:</strong> cómputo <strong>CPU-intensivo</strong> (factoriales, producto de matrices). Un cómputo grande dentro de un <code>async</code> no llega a un <code>await</code> y por lo tanto <strong>no cede el control</strong> a otras tareas → mata la concurrencia. Para eso, <code>spawn_blocking</code> o fork-join.</div>
         </div>
         <p>Dato fino: los futures son <strong>functors</strong> (se pueden <code>map</code>) y <strong>monads</strong> (se pueden <code>flatten</code>), y se encadenan/combinan con <code>join</code>.</p>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>async ≠ concurrente:</strong> varios <code>await</code> seguidos resuelven <em>en secuencia</em> y <strong>suman</strong> los tiempos (bajar «hello» 2s + «world» 1s = <strong>3s</strong>). Se vuelven concurrentes solo si los combinás con <code>join!</code> (= <strong>2s</strong>). No hace falta spawnear tasks.</li>
+            <li><strong><code>thread::sleep</code> dentro de un <code>async</code> bloquea TODO el hilo</strong> (rompe la concurrencia: 2+1 vuelve a tardar 3s aun con <code>join!</code>). El compilador tira <em>warning</em>, no error. Solo se cede en un <code>await</code> con timers async.</li>
+            <li><strong>El executor no hace busy-poll:</strong> usa el <em>waker</em> (el <code>Context</code>, 2º parámetro de <code>poll</code>), avisado por el SO (timer, socket), para saber <em>cuándo</em> re-pollear.</li>
+            <li><strong><code>join_all</code>:</strong> convierte una <em>colección de futures</em> en un <em>future de la colección</em> (patrón para un servicio sin API bulk: una request por id, todas concurrentes).</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>Trampas de V/F frecuentes:</strong> «El que hace poll es el thread principal» → <em>Falso</em>, lo hace el <strong>executor/runtime</strong>. «poll se llama solo cuando la tarea puede progresar» → <em>Verdadero</em>. «El modelo piñata es colaborativo» → <em>Verdadero</em> (cooperativo). «La operación async inicia al llamar a la función <code>async</code>» → <em>Falso</em>: al invocarla solo se crea el <code>Future</code>; recién arranca al primer <code>poll</code>/<code>await</code>.</p>
       </section>

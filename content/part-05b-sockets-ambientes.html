@@ -73,6 +73,16 @@ fn cliente() -> std::io::Result<()> {
 }</pre>
         <p><code>TcpStream</code> implementa <code>Read</code> y <code>Write</code>; <code>flush()</code> fuerza el envío del buffer; la conexión se cierra al hacer <strong>drop</strong> del stream (o explícitamente con <code>shutdown()</code>, que puede cerrar el extremo de lectura, de escritura o ambos).</p>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Retos al pasar de channels a sockets:</strong> hay que <em>serializar</em> (espacios separados, no pasás punteros; cuidado con endianness/arquitecturas), <em>delimitar</em> mensajes, manejar (des)conexión, latencia de red no despreciable, discovery, pérdida/reordenamiento y relojes imposibles de sincronizar (afecta timeouts). «Un hilo por conexión no va más».</li>
+            <li><strong>Delimitar mensajes:</strong> el socket es un buffer de bytes sin marcas → necesitás un protocolo (líneas con <code>\n</code>, <code>BufReader::read_line</code>). <code>read()</code> que devuelve <code>Ok(0)</code> = conexión cerrada limpia. Y <code>read()</code> puede devolver <em>menos</em> bytes de los pedidos → hay que reintentar en loop hasta completar.</li>
+            <li><strong>Actix <code>StreamHandler</code> &gt; hilo-por-conexión:</strong> entrega cada mensaje entrante directo al actor (te ahorra el loop poleador que forwardea); una desconexión mata al actor por defecto.</li>
+            <li><strong>ACK de aplicación ≠ ACK de TCP:</strong> que TCP confirme paquetes no reemplaza la confirmación a nivel app; el par puede estar colgado mientras TCP sigue drenando el buffer.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> distinguir stream (TCP, confiable) vs datagram (UDP, no confiable), servidor iterativo vs concurrente, y el orden de syscalls del lado servidor (<code>bind → listen → accept</code>) vs cliente (<code>connect</code>).</p>
       </section>
 
@@ -118,6 +128,17 @@ fn cliente() -> std::io::Result<()> {
         </ul>
         <div class="callout blue"><strong>Conocimiento:</strong> el <strong>conocimiento local</strong> es el contenido de la memoria local de <code>x</code> y lo que se deriva de ella; en ausencia de fallas no se puede perder. Tipos: <strong>información métrica</strong> (datos numéricos: nº de nodos, aristas, diámetro), <strong>propiedades topológicas</strong> (p. ej. «el grafo es un anillo/árbol») y <strong>mapas topológicos</strong> (mapa de la vecindad hasta distancia <code>d</code>, p. ej. la matriz de adyacencia).</div>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Impulso espontáneo — ejemplo:</strong> el docente lo ejemplifica con los <em>spurious wakeups</em> de las variables de condición (por eso el <code>waitC</code> va en un <code>while</code>); sirve para <em>iniciar actividad autónoma</em> (p. ej. el iniciador de un algoritmo, que arranca sin recibir mensaje).</li>
+            <li><strong>Delays unitarios = por ENLACE, no por mensaje:</strong> cada <em>enlace</em> demora 1 unidad; un mensaje que cruza <code>k</code> enlaces demora <code>k</code>. En un anillo de 8 con 4 saltos → 4 unidades.</li>
+            <li><strong>Cómo homogeneizar un protocolo:</strong> cargar el <em>mismo</em> programa en todas las entidades; un <code>if soy_líder</code> decide, y lo único que cambia es el estado interno (<code>status(x)</code>).</li>
+            <li><strong>El costo no es solo <code>M</code>:</strong> también pesan la <em>carga por unidad</em> (construir el mensaje) y la <em>carga de transmisión</em> (tamaño); mensajes muy grandes pueden volver inviable un protocolo (redes satelitales / sin fragmentación).</li>
+            <li><strong><code>NIN</code>/<code>NOUT</code> = vecinos DIRECTOS</strong> (a un solo salto, sin reenvío): en un anillo alcanzás a cualquiera, pero directo solo al anterior/siguiente.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final (aparece seguido):</strong> «qué es una entidad y enumerar sus capacidades»; «explicar Acción, Regla y Comportamiento y cómo se caracteriza» (respuesta: por su conjunto de reglas <code>estado × evento → acción</code>, que es su protocolo, con una única regla por par estado-evento, y puede ser homogéneo); «qué es el Conocimiento y qué tipos existen» (métrico, topológico, mapas).</p>
       </section>
 
@@ -133,5 +154,15 @@ fn cliente() -> std::io::Result<()> {
           <li><strong>Tipos de servicio:</strong> <em>sin conexión</em> (UDP puro, sin control de flujo ni errores), <em>sin conexión con ACK</em> (acuse por cada dato, más confiable sin enlace dedicado) y <em>con conexión</em> (TCP: tres fases —establecimiento, datos, cierre— con control de flujo y de errores).</li>
           <li><strong>OSI:</strong> estándar de 7 capas que define interfaces y protocolos en cada nivel. <strong>TCP/IP</strong> es la pila real (IP, TCP, UDP y protocolos de aplicación como HTTP, FTP).</li>
         </ul>
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>PDU por capa</strong> (se pregunta): <em>bit</em> (física) → <em>trama/frame</em> (enlace) → <em>paquete</em> (red/IP) → <em>segmento</em> (transporte/TCP).</li>
+            <li><strong>Qué capas corre cada nodo:</strong> las capas 1-3 (física, enlace, red) las corren emisor, receptor <em>y todos los routers intermedios</em> (por el enrutamiento); la capa 4 (TCP/UDP) <em>solo</em> en los extremos.</li>
+            <li><strong>IP:</strong> sin conexión, sin retransmisión; su checksum verifica <em>solo el encabezado</em>, no el cuerpo. Servicios de capa de red: enrutamiento, fragmentación/reensamblado y direccionamiento.</li>
+            <li><strong>Capa de presentación:</strong> uniformiza la representación — endianness (big/little) y encodings (ASCII/Latin-1/UTF-8, emojis). En TCP/IP, sesión y presentación viven <em>dentro</em> del protocolo de aplicación (p. ej. las cookies de HTTP).</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> suele venir como apoyo de sockets. Recordar: TCP = con conexión, confiable, control de flujo/errores; UDP = sin conexión, sin garantías; y que cada capa da un <em>servicio</em> a la de arriba y habla un <em>protocolo</em> con su par.</p>
       </section>

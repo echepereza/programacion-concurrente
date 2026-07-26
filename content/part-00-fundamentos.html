@@ -62,6 +62,16 @@ flowchart LR
           <li><strong>Comunicación:</strong> intercambio de <em>datos</em> entre procesos para que el programa cumpla su función (memoria compartida o pasaje de mensajes).</li>
         </ul>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Motivación histórica:</strong> la velocidad de reloj de las CPU se amesetó alrededor de 2004 (límite físico/térmico, ~4 GHz); como ya no crece, se agregan <em>núcleos</em> → para aprovecharlos el programa <em>tiene</em> que ser concurrente.</li>
+            <li><strong>Dos motivaciones distintas:</strong> (1) <em>performance</em>, usar varios procesadores; (2) el problema lo <em>exige por naturaleza</em>: partes independientes (un browser atiende el input, repinta la pantalla y recibe red a la vez), aun con un solo core.</li>
+            <li><strong>En un solo núcleo la concurrencia NO acelera</strong> los ciclos de CPU: agrega overhead de context-switch. Corrige el error común «concurrencia = mejor uso de CPU».</li>
+            <li><strong>Atomicidad ≠ instrucción de máquina:</strong> una <em>operación</em> como «leer-sumar-escribir» un contador NO es atómica para el procesador; la atomicidad la garantizás vos. Ejemplo de <em>lost update</em>: dos molinetes de un estadio leen 0, ambos escriben 1 → entraron 2 personas pero el contador marca 1.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «Definir programa concurrente, proceso e instrucción atómica» y «por qué la salida de un programa concurrente puede variar». Respuesta: porque la ejecución es una intercalación arbitraria de instrucciones atómicas; solo se preserva el orden causal de cada proceso, así que hay múltiples escenarios y la corrección debe valer en <em>todos</em>.</p>
       </section>
 
@@ -132,6 +142,13 @@ stateDiagram-v2
           <figcaption>Un proceso pasa por Nuevo → Listo (ready) → Ejecutando (running) → puede bloquearse (waiting) por E/S o un recurso y volver a Listo → Finalizado (libera sus recursos y permite obtener su estado de finalización).</figcaption>
         </figure>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Proceso «teórico» ≠ proceso de Unix:</strong> en la materia «proceso» = cada programa secuencial que compone el programa concurrente. Los procesos son <em>unidades de aislamiento</em>; los threads, <em>unidades de ejecución</em>.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final/parcial:</strong> distinguir con precisión qué comparte cada abstracción. Regla mnemotécnica: <em>proceso = casa propia; threads = compañeros de la misma casa con su propia pieza (stack); tareas async = threads muy livianos y cooperativos que guardan su “pieza” dentro del Future.</em></p>
       </section>
 
@@ -192,6 +209,17 @@ fn main() {
           <li><strong><code>Sync</code>:</strong> el tipo puede <em>referenciarse de forma segura desde varios threads</em>. Formalmente, <code>T</code> es <code>Sync</code> si <code>&amp;T</code> es <code>Send</code>. Los tipos primitivos y los compuestos por tipos <code>Sync</code> son automáticamente <code>Sync</code>.</li>
         </ul>
         <div class="callout blue">Estos traits son <em>marker traits</em>: el compilador los deduce. Si intentás mandar un <code>Rc</code> a otro thread, el error de compilación es «<code>Rc&lt;T&gt;</code> cannot be sent between threads safely»: te está diciendo que uses <code>Arc</code>.</div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Move vs Clone vs Copy:</strong> pasar un struct sin <code>Clone</code> a una función lo <em>mueve</em> (no compila si lo reusás). <code>Clone</code> = copia <em>explícita</em> (<code>.clone()</code>); <code>Copy</code> = marker trait, copia <em>silenciosa/automática</em> (tipos chicos en el stack). En concurrencia se dejan explícitas a propósito, para controlar qué se copia.</li>
+            <li><strong>La mutabilidad es propiedad del <em>binding</em>, no del objeto:</strong> no hay «objetos inmutables»; depende de la variable que tiene el valor.</li>
+            <li><strong><code>&amp;mut</code> se marca en ambos lados:</strong> a diferencia de C, no alcanza con que la función pida <code>&amp;mut</code>; el que llama también escribe <code>&amp;mut</code> al pasarlo (para hacerlo consciente).</li>
+            <li><strong>panic en hilo vs main:</strong> <code>spawn</code> devuelve un <code>JoinHandle</code>; <code>join()</code> da un <code>Result</code> (<code>Ok(valor)</code> o <code>Err</code> si paniqueó). Un panic en un hilo mata <em>solo</em> ese hilo; en el <code>main</code>, toda la app.</li>
+            <li><strong>Por defecto todo va al stack</strong> (a diferencia de Java, todo heap); <code>Box</code> es la primera forma de alocar en el heap (necesaria para tipos recursivos).</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> explicar cómo Rust previene condiciones de carrera. Idea a decir: las reglas de <em>ownership/borrowing</em> imponen «muchos <code>&amp;T</code> XOR un <code>&amp;mut T</code>» y se chequean en compilación; para compartir mutable entre hilos se usa <code>Arc&lt;Mutex&lt;…&gt;&gt;</code>; <code>Send</code>/<code>Sync</code> definen qué tipos son seguros de mover/compartir entre threads.</p>
       </section>

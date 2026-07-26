@@ -90,6 +90,13 @@ flowchart LR
 - **Sincronización:** coordinación *temporal* entre procesos (quién puede avanzar y cuándo; garantizar exclusión mutua, orden, esperar condiciones).
 - **Comunicación:** intercambio de *datos* entre procesos para que el programa cumpla su función (memoria compartida o pasaje de mensajes).
 
+**Matices de clase (para no perder puntos)**
+
+- **Motivación histórica:** la velocidad de reloj de las CPU se amesetó alrededor de 2004 (límite físico/térmico, ~4 GHz); como ya no crece, se agregan *núcleos* → para aprovecharlos el programa *tiene* que ser concurrente.
+- **Dos motivaciones distintas:** (1) *performance*, usar varios procesadores; (2) el problema lo *exige por naturaleza*: partes independientes (un browser atiende el input, repinta la pantalla y recibe red a la vez), aun con un solo core.
+- **En un solo núcleo la concurrencia NO acelera** los ciclos de CPU: agrega overhead de context-switch. Corrige el error común «concurrencia = mejor uso de CPU».
+- **Atomicidad ≠ instrucción de máquina:** una *operación* como «leer-sumar-escribir» un contador NO es atómica para el procesador; la atomicidad la garantizás vos. Ejemplo de *lost update*: dos molinetes de un estadio leen 0, ambos escriben 1 → entraron 2 personas pero el contador marca 1.
+
 **En el final:** «Definir programa concurrente, proceso e instrucción atómica» y «por qué la salida de un programa concurrente puede variar». Respuesta: porque la ejecución es una intercalación arbitraria de instrucciones atómicas; solo se preserva el orden causal de cada proceso, así que hay múltiples escenarios y la corrección debe valer en *todos*.
 
 <a id="threads"></a>
@@ -174,6 +181,10 @@ stateDiagram-v2
 
 *Un proceso pasa por Nuevo → Listo (ready) → Ejecutando (running) → puede bloquearse (waiting) por E/S o un recurso y volver a Listo → Finalizado (libera sus recursos y permite obtener su estado de finalización).*
 
+**Matices de clase (para no perder puntos)**
+
+- **Proceso «teórico» ≠ proceso de Unix:** en la materia «proceso» = cada programa secuencial que compone el programa concurrente. Los procesos son *unidades de aislamiento*; los threads, *unidades de ejecución*.
+
 **En el final/parcial:** distinguir con precisión qué comparte cada abstracción. Regla mnemotécnica: *proceso = casa propia; threads = compañeros de la misma casa con su propia pieza (stack); tareas async = threads muy livianos y cooperativos que guardan su “pieza” dentro del Future.*
 
 <a id="rust"></a>
@@ -257,6 +268,14 @@ Arc
 
 .
 
+**Matices de clase (para no perder puntos)**
+
+- **Move vs Clone vs Copy:** pasar un struct sin `Clone` a una función lo *mueve* (no compila si lo reusás). `Clone` = copia *explícita* (`.clone()`); `Copy` = marker trait, copia *silenciosa/automática* (tipos chicos en el stack). En concurrencia se dejan explícitas a propósito, para controlar qué se copia.
+- **La mutabilidad es propiedad del *binding*, no del objeto:** no hay «objetos inmutables»; depende de la variable que tiene el valor.
+- **`&amp;mut` se marca en ambos lados:** a diferencia de C, no alcanza con que la función pida `&amp;mut`; el que llama también escribe `&amp;mut` al pasarlo (para hacerlo consciente).
+- **panic en hilo vs main:** `spawn` devuelve un `JoinHandle`; `join()` da un `Result` (`Ok(valor)` o `Err` si paniqueó). Un panic en un hilo mata *solo* ese hilo; en el `main`, toda la app.
+- **Por defecto todo va al stack** (a diferencia de Java, todo heap); `Box` es la primera forma de alocar en el heap (necesaria para tipos recursivos).
+
 **En el final:** explicar cómo Rust previene condiciones de carrera. Idea a decir: las reglas de *ownership/borrowing* imponen «muchos `&amp;T` XOR un `&amp;mut T`» y se chequean en compilación; para compartir mutable entre hilos se usa `Arc&lt;Mutex&lt;…&gt;&gt;`; `Send`/`Sync` definen qué tipos son seguros de mover/compartir entre threads.
 
 <a id="modelos"></a>
@@ -311,6 +330,22 @@ esperar
 | Backend de Menti/Kahoot competitivo | Actores (estado por sala, mensajes) |
 | Caché para reducir requests a la DB | Estado compartido con `RwLock` (muchas lecturas) |
 | API HTTP que corre un modelo NLP | Async para servir + `spawn_blocking` para el cómputo |
+
+### Los mismos modelos en otros lenguajes
+
+La cátedra cierra mostrando que estos modelos son «ciudadanos de primera clase» en otros lenguajes (útil para ubicar cada modelo):
+
+| Lenguaje | Modelo | Rasgos |
+| --- | --- | --- |
+| **Go** | Canales (CSP) | *goroutines* (green threads, stack de 2 KB que crece) + *channels*; «no comuniques compartiendo memoria; compartí memoria comunicando»; no tiene manejo de errores. |
+| **Erlang / Elixir** | Actores | Procesos sobre la BEAM VM; «let it crash» + *supervisores* (OTP/GenServer). Lo usan WhatsApp y Discord. |
+| **Clojure** | Memoria transaccional | *Software Transactional Memory* (STM); dialecto de Lisp sobre la JVM. |
+| **Julia** | Datos / paralelo | Cómputo científico; green threads + **SIMD** de fábrica; sintaxis tipo Python. |
+
+**Matices de clase (para no perder puntos)**
+
+- **Modelo ≠ herramienta:** «productor-consumidor» y «threads» son *idioms*, no modelos. En el examen nombrá **uno de los 5 modelos** y justificá (navaja de Ockham). `SyncArbiter` es *implementación* (fork-join), no una respuesta de diseño; ofrecerlo como «solución mágica» descalifica.
+- **Fork-join: divisible es necesario pero no suficiente** — además pide cómputo *CPU-intensivo*. «N APIs» es un fork por llamada pero se resuelve con **async** (es espera). «Procesar logs muy concurridos» = fork-join/MapReduce («muy concurrido» = genera muchos logs, no tiempo real); si fuera en vivo → un actor contador.
 
 **En el parcial:** siempre justificar con *CPU-bound vs I/O-bound* y con «¿hay estado compartido que serializar o entidades que se comunican?». No basta nombrar el modelo: hay que dar ventaja y desventaja y decir cuál elegirías.
 
@@ -391,6 +426,14 @@ flowchart LR
 ```
 
 *Word Count como DAG (el «Hello World» de MapReduce, con Rayon): read_dir → flat_map(lines) → map(contar) → reduce en árbol. El map procesa cada línea en paralelo; el reduce combina los conteos parciales de a pares hasta el resultado final.*
+
+**Matices de clase (para no perder puntos)**
+
+- **Por qué se roba del INICIO de la deque** (el docente avisa que «esta la tomo mucho y la responden mal»): el dueño trabaja su cola como *pila* (saca del *final*, las más nuevas); el ladrón roba del *inicio* (la más vieja), que está más arriba en el árbol de recursión → en promedio es la tarea *más grande* → robar grande minimiza la cantidad de robos/sincronización con colas ajenas.
+- **Granularidad de las tareas:** demasiado finas (1 tarea por píxel) corren *peor* que en serie por overhead de crear/context-switch; demasiado gruesas dejan CPUs ociosas si son dispares. Óptimo: *shards* de tamaño uniforme. (1 por fila fue 10× más rápido que 1 por píxel.)
+- **API real:** `rayon::join(a, b)` corre dos closures en paralelo y devuelve `(retA, retB)`; `std::thread::scope` existe en la std desde 1.63; `crossbeam::scope` devuelve `Err` si algún thread paniqueó. **Nunca `unwrap`** en `JoinHandle::join`: manejá el panic (loggear y seguir).
+- **`reduce` con fábrica:** el valor inicial va como *closure*, no como valor, porque cada reducción concurrente necesita *su propio* acumulador (un solo `HashMap` sería escritura concurrente).
+- **GPU vs CPU:** la CPU minimiza *latencia* (cachés, branch prediction, pocos hilos); la GPU maximiza *throughput* (misma instrucción sobre millones de datos, esconde la RAM lenta corriendo otro hilo). La copia host↔device suele *dominar* el tiempo → «viví en la GPU». La cátedra programa GPU con **WebGPU/WGSL** (no solo CUDA); un *workgroup* ≈ warp ≈ SIMD group, óptimo si es múltiplo de 32.
 
 **En el final:** propiedades de fork-join (determinístico, sin races, aislado), qué es work stealing (deque, robar del inicio de otra cola) y por qué SIMD/GPU sirven para «mismo cómputo sobre muchos datos independientes» y no para lógica con estado compartido.
 
@@ -530,6 +573,13 @@ spawn_blocking
 o fork-join.
 
 Dato fino: los futures son **functors** (se pueden `map`) y **monads** (se pueden `flatten`), y se encadenan/combinan con `join`.
+
+**Matices de clase (para no perder puntos)**
+
+- **async ≠ concurrente:** varios `await` seguidos resuelven *en secuencia* y **suman** los tiempos (bajar «hello» 2s + «world» 1s = **3s**). Se vuelven concurrentes solo si los combinás con `join!` (= **2s**). No hace falta spawnear tasks.
+- **`thread::sleep` dentro de un `async` bloquea TODO el hilo** (rompe la concurrencia: 2+1 vuelve a tardar 3s aun con `join!`). El compilador tira *warning*, no error. Solo se cede en un `await` con timers async.
+- **El executor no hace busy-poll:** usa el *waker* (el `Context`, 2º parámetro de `poll`), avisado por el SO (timer, socket), para saber *cuándo* re-pollear.
+- **`join_all`:** convierte una *colección de futures* en un *future de la colección* (patrón para un servicio sin API bulk: una request por id, todas concurrentes).
 
 **Trampas de V/F frecuentes:** «El que hace poll es el thread principal» → *Falso*, lo hace el **executor/runtime**. «poll se llama solo cuando la tarea puede progresar» → *Verdadero*. «El modelo piñata es colaborativo» → *Verdadero* (cooperativo). «La operación async inicia al llamar a la función `async`» → *Falso*: al invocarla solo se crea el `Future`; recién arranca al primer `poll`/`await`.
 
@@ -672,6 +722,15 @@ Los finales piden diseñar sistemas con actores definiendo, por cada entidad, su
 | Cocinero | pedido en preparación | recibe `NuevoPedido`; pide acceso al Depósito; al terminar envía `PlatoListo` al Mozo |
 | Depósito | ocupado/libre (acceso exclusivo) | recibe `TomarIngredientes`/`Liberar` (serializa el acceso de a uno) |
 
+**Matices de clase (para no perder puntos)**
+
+- **Analogías del docente:** sincrónico = *llamada telefónica* (ambos en sincronía); asincrónico = *email* (se acumulan en un buffer). Sin direccionamiento = *publicar en Twitter* (lo ven todos, lo procesa quien detecta que es para él). `do_send`/`try_send`/`send` = *tildes de WhatsApp*: sin tilde (se puede perder) / un tilde (te enterás si falla el envío) / esperás la respuesta.
+- **Canales std vs Tokio:** `recv()` de `std::sync::mpsc` *bloquea* y NO implementa `Future`; los canales de Tokio sí (se usan con `await`). Para *múltiples consumidores*, como el `Receiver` no se clona, se envuelve en `Arc&lt;Mutex&lt;Receiver&gt;&gt;`.
+- **Orden de mensajes:** garantizado *dentro* del mailbox de un mismo actor; *entre* actores distintos, NO.
+- **Sync Arbiter:** contexto *síncrono* donde cada actor tiene su propio hilo del SO. Se usa cuando el handler hace cómputo pesado o llama código bloqueante: en el runtime default todo se multiplexa en *un* hilo, así que un bloqueo congela TODO el sistema de actores. Con &gt;1 hilo actúa como pool round-robin (N instancias con estado independiente).
+- **Anti-patrón (descalifica en el parcial):** meter estado mutable compartido (un `Mutex`, etc.) *dentro* del estado de un actor. Los actores existen justamente para evitar eso.
+- **Diseñar con actores (metodología):** (a) *nunca* bloquear ni pollear dentro de un handler → encolá el `Addr` del que pide y avisale cuando es su turno (preguntar «¿estás libre?» y dormir es busy-wait maquillado); (b) *un actor por recurso exclusivo*, no un gestor único (workers indistinguibles sí admiten cola/round-robin); (c) si «servir» es multi-paso, guardá una *cola de `Addr`* en el estado; (d) *fan-out*: pedir 3 cosas = 3 mensajes en paralelo, armás cuando llegan las 3.
+
 **En el final:** «motivación del modelo de actores, características y ciclo de vida en Actix». Motivación: evitar el estado mutable compartido y sus locks; cada actor es dueño de su estado y solo cambia procesando mensajes (uno a la vez) → sin races por diseño, escala a miles de entidades livianas, encaja en sistemas distribuidos (dirección remota). Características: aislados, mailbox FIFO, mensajes asincrónicos e inmutables, supervisión. Ciclo: Started → Running → Stopping → Stopped.
 
 <a id="correccion"></a>
@@ -790,6 +849,13 @@ loop {
 }
 ```
 
+**Matices de clase (para no perder puntos)**
+
+- **Programa modelo de la SC:** la definición formal es un *loop infinito* con parte crítica y parte NO crítica. La SC exige progreso/finalización; la no-crítica *no* (podés loopear ahí sin molestar). Si te piden «definir la sección crítica», explicá el programa modelo.
+- **TOCTOU** (*time-of-check-to-time-of-use*): leer una variable, decidir con un `if` y actuar deja una ventana donde el valor cambia (race más sutil que el contador). Fix: no soltar el lock entre el chequeo y el uso.
+- **`try_read`/`try_write` en loop = busy-wait:** no bloquean; reintentarlos es espera activa (prohibida). Y meter un `sleep` en el loop de chequeo *sigue siendo* espera activa: re-evaluás la condición arbitrariamente.
+- **Sección crítica lo más chica posible:** favorece el paralelismo y baja la probabilidad de un panic con el lock tomado (que envenenaría el lock).
+
 **En el final:** «explicar y comparar busy-wait, deadlock, race condition y starvation». Ejes para ordenar la respuesta: (1) ¿consume CPU inútilmente? → busy-wait; (2) ¿resultado depende del timing? → race; (3) ¿todos trabados esperándose? → deadlock; (4) ¿uno queda postergado para siempre mientras el resto avanza? → starvation.
 
 <a id="locks"></a>
@@ -866,6 +932,13 @@ Err
 : estás propagando (o manejando) ese posible envenenamiento.
 
 **Mutex** es el caso exclusivo puro (equivalente a un lock de escritura o semáforo binario). El patrón para mutar estado compartido entre hilos es `Arc&lt;Mutex&lt;T&gt;&gt;` (compartir + serializar).
+
+**Matices de clase (para no perder puntos)**
+
+- **Tipos atómicos:** `Arc&lt;AtomicUsize&gt;` permite mutar *sin* `Mutex` porque `fetch_add`/`fetch_sub` son atómicas por hardware; el `Ordering` (default `SeqCst`, el más estricto) fija el orden de memoria. El propio contador interno de `Arc` también es atómico.
+- **Self-deadlock:** pedir `write()` teniendo un `read()` vivo en el *mismo* hilo se traba; Rust lo detecta solo por ser determinístico (un thread), no con varios.
+- **Granularidad del lock:** el patrón es dos secciones críticas cortas —leer al inicio, escribir al final— con el *trabajo real fuera* del lock. Si los hilos viven dentro de la SC, todo se serializa y no tiene sentido tener varios.
+- **`fcntl` con rangos de bytes:** lockea un registro de tamaño fijo sin bloquear el resto del archivo; `flock`/`lockf` son más simples pero sin rangos.
 
 **En el final:** diferencia shared vs exclusive, por qué los locks de Unix son *advisory*, y el patrón RAII: el guard libera solo → menos bugs de «me olvidé el `unlock()`». Mencionar poisoning como propiedad de seguridad de Rust.
 
@@ -976,6 +1049,13 @@ impl Semaforo {
 }
 ```
 
+**Matices de clase (para no perder puntos)**
+
+- **`signal` despierta a uno al AZAR:** `L` es un *conjunto* sin orden (ni FIFO ni prioridad). Esa arbitrariedad es, por diseño, lo que evita *starvation* (es equitativo). «Señalizar» viene de los semáforos ferroviarios; `P`/`V` son wait/signal en holandés (Dijkstra).
+- **System V vs POSIX:** System V guarda info de control extra (PID del último, cuántos esperan, y cuántos esperan a que el contador llegue a 0). Ese último dato habilita `wait_for_0` (bloquear hasta 0) → una *barrera casera*.
+- **En Rust el semáforo es un crate externo** (`std-semaphore`): `acquire`=wait, `release`=signal, `access` devuelve una guarda con auto-release (RAII). OJO: `access` NO sirve en productor-consumidor, porque ahí el `signal` ocurre en *otro* proceso que el `wait`.
+- **Tip de examen:** en pseudocódigo con semáforos, *especificá siempre las condiciones iniciales* del contador. Con N productores/consumidores siguen siendo **solo 2 semáforos** (la cantidad de recurso es la misma) + 1 mutex para el buffer.
+
 **En el final:** «describir cómo se implementan los monitores y sus métodos, y compararlos con semáforos». Puntos que no pueden faltar: variables de condición sin valor + FIFO; `waitC` siempre bloquea y libera el monitor; `signalC` no hace nada si la cola está vacía; y el `while` por spurious wakeup. Reconocer que `Mutex + Condvar` = monitor/semáforo.
 
 <a id="clasicos"></a>
@@ -1077,6 +1157,12 @@ read()
 write()
 
 = lock exclusivo. La política de preferencia depende del SO.
+
+**Matices de clase (para no perder puntos)**
+
+- **Lector-escritor *fair* con cola de turnos:** condvar + turno actual/próximo + contador de lectores + bool `writing`. Cada uno «saca número» al llegar; el lector, al entrar, *avanza* el turno (deja pasar a otro lector concurrente), el escritor *no* lo avanza (frena al escritor de atrás). Resuelve starvation de ambos lados (como el turnero de la farmacia).
+- **Barbero = rendezvous de dos semáforos invertidos:** `acquire` en un thread / `release` en el otro (y viceversa); el barbero «duerme» en `acquire(clientes)` con el contador en 0.
+- **SETI/fork-join con barreras:** hacen falta *dos* barreras por época —una para que todos empiecen recién cuando todos leyeron la señal, y otra para esperar que todos hayan leído antes de modificarla—. Ser *líder* de la barrera NO garantiza seguir ejecutando (podés ceder la CPU justo después).
 
 **En el parcial:** te dan una red de Petri o un fragmento de código y tenés que **reconocer el problema** (casi siempre productor-consumidor o lector-escritor) y decir si la implementación es correcta o cómo mejorarla. Memorizá los semáforos de cada uno: `notEmpty`/`notFull` para productor-consumidor acotado.
 
@@ -1288,6 +1374,15 @@ M0=(3,0)
 - **Lector-Escritor:** un lugar «recurso» con capacidad; para *preferencia de escritura* se usan **arcos inhibidores** que impiden que entren lectores si hay un escritor esperando.
 - **Cliente-Servidor:** lugares para peticiones/respuestas y transiciones para el procesamiento.
 
+**Matices de clase (para no perder puntos)**
+
+- **Es un autómata finito NO determinista:** las transiciones que consumen los *mismos* tokens compiten, y no controlás cuál dispara ni en qué orden (lo decide el scheduler). Es el interleaving del §1 hecho gráfico.
+- **Deadlock en el grafo de alcance:** se ve como una *marca muerta* (sin transiciones habilitadas) a la que se llega por varios caminos = «estado que no terminó y no puede salir, necesita recursos que no tiene».
+- **Trampa: dos lugares ≠ un lugar con 2 tokens.** Un lugar con 2 tokens habilita disparar *dos veces* la misma transición; separá los lugares si querés forzar «una y una».
+- **Arco inhibidor = un NOT lógico** (se dibuja con un *puntito*, como el NOT de electrónica): la transición dispara solo si sus entradas comunes tienen token *Y* las inhibidoras están *vacías*. Sin él, muchos problemas «no tienen solución» con el álgebra ordinaria. Lector-escritor con preferencia de escritura: un lugar «escritor quiere» + arco inhibidor hacia la entrada de lectores.
+- **Análisis estático** (herramienta **PIPE**): opera sobre la *matriz de incidencia*; detecta deadlock (y da el camino más corto hacia él), acotamiento e invariantes.
+- **En el examen:** no dibujes arcos lugar-lugar ni transición-transición; hay que *graficar Y explicar* nombrando cada lugar y transición (no genérico: «P = hay ítem en el buffer», «T = procesar ítem»).
+
 **En el final (Ej. típico de Petri):** (1) describir Red Ordinaria vs General y qué son `I(t)`/`O(t)`; (2) modelar un sistema. Receta para modelar: identificá los **lugares** (estados/recursos, con su marca inicial), las **transiciones** (acciones), dibujá los arcos, y **justificá con un invariante** por qué la propiedad de seguridad (ej. «no más de N») se cumple. Cerrá con una **secuencia de disparos válida**.
 
 <a id="transacciones"></a>
@@ -1383,6 +1478,14 @@ gana (sin overhead de locks, más paralelismo).
 - **Commit en tres fases (3PC):** agrega una fase intermedia («pre-commit») al 2PC para que *no* sea bloqueante: si el coordinador cae, los participantes pueden decidir por *timeout* sin quedar colgados. A cambio, más mensajes y latencia.
 - **Sagas:** para transacciones *largas* que tocan muchos servicios, en vez de un lock global se ejecuta una secuencia de pasos, cada uno con su **acción compensatoria** (undo). Si un paso falla, se corren las compensaciones de los pasos previos. Sacrifica aislamiento estricto por disponibilidad (típico en microservicios).
 
+**Matices de clase (para no perder puntos)**
+
+- **2PC en la práctica — timeouts + keep-alive:** en *prepare*, cada participante manda *keep-alive* («ya te escuché, lo estoy preparando»); mientras lo mande se lo considera vivo; silencio dentro del timeout = se trata como abort.
+- **Recuperación idempotente:** ante una caída, el coordinador reenvía `prepare` con el *mismo* id y el participante responde *exactamente lo mismo* que la primera vez (guarda su respuesta). Ambos lados persisten su estado; el participante también corre su propio timeout (ej. libera el stock si no oye nada).
+- **Autoridad asimétrica del coordinador:** puede *abortar* aunque todos hayan votado commit (ej. el usuario cerró la página), pero *nunca* commitea si alguno no dio OK. Como el commit no puede fallar y debe ser rápido, el trabajo pesado (autorizar el pago, reservar) va en *prepare* → 2PC exige transacciones cortas. (El coordinador ES el proceso que ejecuta la transacción; no hace falta elección de líder.)
+- **Git = concurrencia optimista:** modifica esperando no colisionar; ante conflicto *mergea* en vez de abortar. La *granularidad* es la unidad mínima de conflicto/edición (puede ser la celda, no el archivo entero).
+- **Casos de error a validar:** commitear una transacción abortada o nunca preparada, o abortar una ya commiteada → deben fallar.
+
 **En el final:** «explicar 2PC (ventajas/desventajas)» y «en qué casos usarías concurrencia optimista». Para el escenario de *compra de tickets / sobreventa*: describir 2PL, timestamps y optimista con pros y contras, y concluir que con la alta concurrencia de escritura de la hora pico conviene un esquema **pesimista (2PL / timestamps)** para prevenir compras duplicadas, dejando lo optimista para la parte de solo-lectura (mostrar disponibilidad).
 
 <a id="deadlocks"></a>
@@ -1425,6 +1528,11 @@ espera circular
 una
 
 dirección del orden temporal. La diferencia es a quién se aborta: en Wait-Die el joven se sacrifica; en Wound-Wait el viejo desaloja al joven.
+
+**Matices de clase (para no perder puntos)**
+
+- **¿Por qué «gana» la más vieja?** Criterio *estadístico*: la transacción vieja probablemente ya ejecutó más operaciones, así que rehacerla sale más caro → conviene preservarla y abortar/reintentar la joven. Mnemónico: «vieja espera, joven muere (*die*)».
+- **Quién aborta a quién:** en *wait-die* el que pide se aborta a sí mismo; en *wound-wait* una transacción aborta a una *tercera* (la que tiene el recurso). Lo maneja un *gestor de transacciones* que registra las vivas con sus timestamps y puede matar hilos.
 
 **En el final:** «explicar el sistema de deadlocks distribuido con un gráfico». Contar detección (centralizada con grafo + falsos deadlocks por mensajes desordenados; distribuida con probe y ciclo) y prevención (wait-die vs wound-wait con timestamps). El gráfico esperado es el ciclo de espera / recorrido del probe.
 
@@ -1477,6 +1585,13 @@ flowchart LR
 ```
 
 *Ring: el mensaje circula acumulando IDs; al volver, gana el mayor de la lista.*
+
+**Matices de clase (para no perder puntos)**
+
+- **El rol del líder** (por qué se elige): tener una instancia diferenciada sin configurarla a mano y sin punto único de fallo — réplica de escritura vs. standbys de solo lectura, coordinador de transacciones, nodo-gateway. «El líder hace lo que necesites que haga» (analogía: el Scrum Master que además coordina).
+- **ACKs y por qué UDP alcanza:** en Bully el `OK` ya hace de ACK; son mensajitos aislados de pocos bytes, no importa el orden ni el control de flujo de TCP, solo confirmar recepción. En Ring cada reenvío espera su ACK; si no llega en tiempo, se da por caído al sucesor y se salta al siguiente.
+- **Ricart-Agrawala, matiz:** cada uno responde «por mí, usala» (habla solo por sí); te percibís dueño al juntar el `OK` de *todos*. Precondición: conocer el conjunto *estático* de participantes; es all-to-all (~n²/2 mensajes).
+- **Ring es robusto ante elecciones concurrentes:** varias que arrancan a la vez convergen al mismo líder (cada nodo, al ver su propio ID en el mensaje, lo cambia de `ELECTION` a `COORDINATOR`).
 
 **En el final:** comparar los tres algoritmos de exclusión mutua (centralizado = simple pero SPOF; Ricart-Agrawala = sin coordinador pero N² mensajes; token ring = justo pero con latencia) y saber que Bully y Ring siempre eligen al de mayor ID.
 
@@ -1552,6 +1667,13 @@ fn cliente() -> std::io::Result<()> {
 ```
 
 `TcpStream` implementa `Read` y `Write`; `flush()` fuerza el envío del buffer; la conexión se cierra al hacer **drop** del stream (o explícitamente con `shutdown()`, que puede cerrar el extremo de lectura, de escritura o ambos).
+
+**Matices de clase (para no perder puntos)**
+
+- **Retos al pasar de channels a sockets:** hay que *serializar* (espacios separados, no pasás punteros; cuidado con endianness/arquitecturas), *delimitar* mensajes, manejar (des)conexión, latencia de red no despreciable, discovery, pérdida/reordenamiento y relojes imposibles de sincronizar (afecta timeouts). «Un hilo por conexión no va más».
+- **Delimitar mensajes:** el socket es un buffer de bytes sin marcas → necesitás un protocolo (líneas con `\n`, `BufReader::read_line`). `read()` que devuelve `Ok(0)` = conexión cerrada limpia. Y `read()` puede devolver *menos* bytes de los pedidos → hay que reintentar en loop hasta completar.
+- **Actix `StreamHandler` &gt; hilo-por-conexión:** entrega cada mensaje entrante directo al actor (te ahorra el loop poleador que forwardea); una desconexión mata al actor por defecto.
+- **ACK de aplicación ≠ ACK de TCP:** que TCP confirme paquetes no reemplaza la confirmación a nivel app; el par puede estar colgado mientras TCP sigue drenando el buffer.
 
 **En el final:** distinguir stream (TCP, confiable) vs datagram (UDP, no confiable), servidor iterativo vs concurrente, y el orden de syscalls del lado servidor (`bind → listen → accept`) vs cliente (`connect`).
 
@@ -1673,6 +1795,14 @@ d
 
 , p. ej. la matriz de adyacencia).
 
+**Matices de clase (para no perder puntos)**
+
+- **Impulso espontáneo — ejemplo:** el docente lo ejemplifica con los *spurious wakeups* de las variables de condición (por eso el `waitC` va en un `while`); sirve para *iniciar actividad autónoma* (p. ej. el iniciador de un algoritmo, que arranca sin recibir mensaje).
+- **Delays unitarios = por ENLACE, no por mensaje:** cada *enlace* demora 1 unidad; un mensaje que cruza `k` enlaces demora `k`. En un anillo de 8 con 4 saltos → 4 unidades.
+- **Cómo homogeneizar un protocolo:** cargar el *mismo* programa en todas las entidades; un `if soy_líder` decide, y lo único que cambia es el estado interno (`status(x)`).
+- **El costo no es solo `M`:** también pesan la *carga por unidad* (construir el mensaje) y la *carga de transmisión* (tamaño); mensajes muy grandes pueden volver inviable un protocolo (redes satelitales / sin fragmentación).
+- **`NIN`/`NOUT` = vecinos DIRECTOS** (a un solo salto, sin reenvío): en un anillo alcanzás a cualquiera, pero directo solo al anterior/siguiente.
+
 **En el final (aparece seguido):** «qué es una entidad y enumerar sus capacidades»; «explicar Acción, Regla y Comportamiento y cómo se caracteriza» (respuesta: por su conjunto de reglas `estado × evento → acción`, que es su protocolo, con una única regla por par estado-evento, y puede ser homogéneo); «qué es el Conocimiento y qué tipos existen» (métrico, topológico, mapas).
 
 <a id="redes"></a>
@@ -1684,6 +1814,13 @@ Para entender la comunicación distribuida conviene repasar el **modelo de capas
 - Cada capa `N` ofrece un **servicio** a la capa `N+1` y se comunica con su par mediante un **protocolo** de capa `N`.
 - **Tipos de servicio:** *sin conexión* (UDP puro, sin control de flujo ni errores), *sin conexión con ACK* (acuse por cada dato, más confiable sin enlace dedicado) y *con conexión* (TCP: tres fases —establecimiento, datos, cierre— con control de flujo y de errores).
 - **OSI:** estándar de 7 capas que define interfaces y protocolos en cada nivel. **TCP/IP** es la pila real (IP, TCP, UDP y protocolos de aplicación como HTTP, FTP).
+
+**Matices de clase (para no perder puntos)**
+
+- **PDU por capa** (se pregunta): *bit* (física) → *trama/frame* (enlace) → *paquete* (red/IP) → *segmento* (transporte/TCP).
+- **Qué capas corre cada nodo:** las capas 1-3 (física, enlace, red) las corren emisor, receptor *y todos los routers intermedios* (por el enrutamiento); la capa 4 (TCP/UDP) *solo* en los extremos.
+- **IP:** sin conexión, sin retransmisión; su checksum verifica *solo el encabezado*, no el cuerpo. Servicios de capa de red: enrutamiento, fragmentación/reensamblado y direccionamiento.
+- **Capa de presentación:** uniformiza la representación — endianness (big/little) y encodings (ASCII/Latin-1/UTF-8, emojis). En TCP/IP, sesión y presentación viven *dentro* del protocolo de aplicación (p. ej. las cookies de HTTP).
 
 **En el final:** suele venir como apoyo de sockets. Recordar: TCP = con conexión, confiable, control de flujo/errores; UDP = sin conexión, sin garantías; y que cada capa da un *servicio* a la de arriba y habla un *protocolo* con su par.
 
@@ -1750,6 +1887,13 @@ los escenarios del §1» de forma automática.
 ### Testear actores
 
 Para actores se combina el **mocking** de actores con el patrón **given-when-then** (dado un estado, cuando llega un mensaje, entonces se espera cierto resultado), probando el manejo asincrónico. El reto que queda abierto es **capturar los panics** dentro de un actor y manejar **timeouts** para que el test no quede colgado.
+
+**Matices de clase (para no perder puntos)**
+
+- **Cómo reduce Loom el espacio de estados:** no permuta cada instrucción, solo ramifica en los *accesos a memoria compartida* donde puede haber precedencia entre hilos. Por eso no escala más allá de ~4-5 hilos ni con secciones críticas largas. Es el punto de vista *dinámico* (la Red de Petri es el *estático*). No corre para async/Tokio.
+- **Qué valida y qué no:** detecta *deadlocks* automáticamente; la terminación y la independencia-del-orden las verificás vos con tus `assert`, que Loom corre sobre *todas* las permutaciones.
+- **mockall:** `#[automock]` genera el mock; `#[double]` sustituye una implementación concreta por su mock vía un `use` (sin refactor de inyección) y hasta mockea métodos *estáticos*. En un mock no borres el `sleep`: cambialo por un `yield` (conserva el hint de context-switch). No *sobre*-mockees (si no, probás «que el código sea el que es»). El formato *given-when-then* es Gherkin (BDD).
+- **Panics en actores:** un `assert` que falla dentro de un handler queda «tragado» en el actor system y NO hace fallar el test → guardá el valor y asertá *afuera*; como el sistema corre para siempre (los mensajes pueden venir de un socket), el test necesita *timeout + stop explícito*.
 
 **Para el final/TP:** saber que `#[cfg(test)]` compila los tests solo en modo test, que se mockea con `mockall` gracias a la inyección de dependencias, y sobre todo que **Loom** valida la corrección concurrente explorando los interleavings —lo que a mano es inviable—.
 

@@ -140,5 +140,17 @@ async fn main() {
           </table>
         </div>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Analogías del docente:</strong> sincrónico = <em>llamada telefónica</em> (ambos en sincronía); asincrónico = <em>email</em> (se acumulan en un buffer). Sin direccionamiento = <em>publicar en Twitter</em> (lo ven todos, lo procesa quien detecta que es para él). <code>do_send</code>/<code>try_send</code>/<code>send</code> = <em>tildes de WhatsApp</em>: sin tilde (se puede perder) / un tilde (te enterás si falla el envío) / esperás la respuesta.</li>
+            <li><strong>Canales std vs Tokio:</strong> <code>recv()</code> de <code>std::sync::mpsc</code> <em>bloquea</em> y NO implementa <code>Future</code>; los canales de Tokio sí (se usan con <code>await</code>). Para <em>múltiples consumidores</em>, como el <code>Receiver</code> no se clona, se envuelve en <code>Arc&lt;Mutex&lt;Receiver&gt;&gt;</code>.</li>
+            <li><strong>Orden de mensajes:</strong> garantizado <em>dentro</em> del mailbox de un mismo actor; <em>entre</em> actores distintos, NO.</li>
+            <li><strong>Sync Arbiter:</strong> contexto <em>síncrono</em> donde cada actor tiene su propio hilo del SO. Se usa cuando el handler hace cómputo pesado o llama código bloqueante: en el runtime default todo se multiplexa en <em>un</em> hilo, así que un bloqueo congela TODO el sistema de actores. Con &gt;1 hilo actúa como pool round-robin (N instancias con estado independiente).</li>
+            <li><strong>Anti-patrón (descalifica en el parcial):</strong> meter estado mutable compartido (un <code>Mutex</code>, etc.) <em>dentro</em> del estado de un actor. Los actores existen justamente para evitar eso.</li>
+            <li><strong>Diseñar con actores (metodología):</strong> (a) <em>nunca</em> bloquear ni pollear dentro de un handler → encolá el <code>Addr</code> del que pide y avisale cuando es su turno (preguntar «¿estás libre?» y dormir es busy-wait maquillado); (b) <em>un actor por recurso exclusivo</em>, no un gestor único (workers indistinguibles sí admiten cola/round-robin); (c) si «servir» es multi-paso, guardá una <em>cola de <code>Addr</code></em> en el estado; (d) <em>fan-out</em>: pedir 3 cosas = 3 mensajes en paralelo, armás cuando llegan las 3.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «motivación del modelo de actores, características y ciclo de vida en Actix». Motivación: evitar el estado mutable compartido y sus locks; cada actor es dueño de su estado y solo cambia procesando mensajes (uno a la vez) → sin races por diseño, escala a miles de entidades livianas, encaja en sistemas distribuidos (dirección remota). Características: aislados, mailbox FIFO, mensajes asincrónicos e inmutables, supervisión. Ciclo: Started → Running → Stopping → Stopped.</p>
       </section>

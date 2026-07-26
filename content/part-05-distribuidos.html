@@ -71,6 +71,17 @@ sequenceDiagram
           <li><strong>Sagas:</strong> para transacciones <em>largas</em> que tocan muchos servicios, en vez de un lock global se ejecuta una secuencia de pasos, cada uno con su <strong>acción compensatoria</strong> (undo). Si un paso falla, se corren las compensaciones de los pasos previos. Sacrifica aislamiento estricto por disponibilidad (típico en microservicios).</li>
         </ul>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>2PC en la práctica — timeouts + keep-alive:</strong> en <em>prepare</em>, cada participante manda <em>keep-alive</em> («ya te escuché, lo estoy preparando»); mientras lo mande se lo considera vivo; silencio dentro del timeout = se trata como abort.</li>
+            <li><strong>Recuperación idempotente:</strong> ante una caída, el coordinador reenvía <code>prepare</code> con el <em>mismo</em> id y el participante responde <em>exactamente lo mismo</em> que la primera vez (guarda su respuesta). Ambos lados persisten su estado; el participante también corre su propio timeout (ej. libera el stock si no oye nada).</li>
+            <li><strong>Autoridad asimétrica del coordinador:</strong> puede <em>abortar</em> aunque todos hayan votado commit (ej. el usuario cerró la página), pero <em>nunca</em> commitea si alguno no dio OK. Como el commit no puede fallar y debe ser rápido, el trabajo pesado (autorizar el pago, reservar) va en <em>prepare</em> → 2PC exige transacciones cortas. (El coordinador ES el proceso que ejecuta la transacción; no hace falta elección de líder.)</li>
+            <li><strong>Git = concurrencia optimista:</strong> modifica esperando no colisionar; ante conflicto <em>mergea</em> en vez de abortar. La <em>granularidad</em> es la unidad mínima de conflicto/edición (puede ser la celda, no el archivo entero).</li>
+            <li><strong>Casos de error a validar:</strong> commitear una transacción abortada o nunca preparada, o abortar una ya commiteada → deben fallar.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «explicar 2PC (ventajas/desventajas)» y «en qué casos usarías concurrencia optimista». Para el escenario de <em>compra de tickets / sobreventa</em>: describir 2PL, timestamps y optimista con pros y contras, y concluir que con la alta concurrencia de escritura de la hora pico conviene un esquema <strong>pesimista (2PL / timestamps)</strong> para prevenir compras duplicadas, dejando lo optimista para la parte de solo-lectura (mostrar disponibilidad).</p>
       </section>
 
@@ -110,6 +121,14 @@ flowchart LR
           </table>
         </div>
         <div class="callout">Ambos evitan la <strong>espera circular</strong> (condición de Coffman) porque solo se permite esperar en <em>una</em> dirección del orden temporal. La diferencia es a quién se aborta: en Wait-Die el joven se sacrifica; en Wound-Wait el viejo desaloja al joven.</div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>¿Por qué «gana» la más vieja?</strong> Criterio <em>estadístico</em>: la transacción vieja probablemente ya ejecutó más operaciones, así que rehacerla sale más caro → conviene preservarla y abortar/reintentar la joven. Mnemónico: «vieja espera, joven muere (<em>die</em>)».</li>
+            <li><strong>Quién aborta a quién:</strong> en <em>wait-die</em> el que pide se aborta a sí mismo; en <em>wound-wait</em> una transacción aborta a una <em>tercera</em> (la que tiene el recurso). Lo maneja un <em>gestor de transacciones</em> que registra las vivas con sus timestamps y puede matar hilos.</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> «explicar el sistema de deadlocks distribuido con un gráfico». Contar detección (centralizada con grafo + falsos deadlocks por mensajes desordenados; distribuida con probe y ciclo) y prevención (wait-die vs wound-wait con timestamps). El gráfico esperado es el ciclo de espera / recorrido del probe.</p>
       </section>
@@ -168,6 +187,16 @@ flowchart LR
             <figcaption><strong>Ring:</strong> el mensaje circula acumulando IDs; al volver, gana el mayor de la lista.</figcaption>
           </figure>
         </div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>El rol del líder</strong> (por qué se elige): tener una instancia diferenciada sin configurarla a mano y sin punto único de fallo — réplica de escritura vs. standbys de solo lectura, coordinador de transacciones, nodo-gateway. «El líder hace lo que necesites que haga» (analogía: el Scrum Master que además coordina).</li>
+            <li><strong>ACKs y por qué UDP alcanza:</strong> en Bully el <code>OK</code> ya hace de ACK; son mensajitos aislados de pocos bytes, no importa el orden ni el control de flujo de TCP, solo confirmar recepción. En Ring cada reenvío espera su ACK; si no llega en tiempo, se da por caído al sucesor y se salta al siguiente.</li>
+            <li><strong>Ricart-Agrawala, matiz:</strong> cada uno responde «por mí, usala» (habla solo por sí); te percibís dueño al juntar el <code>OK</code> de <em>todos</em>. Precondición: conocer el conjunto <em>estático</em> de participantes; es all-to-all (~n²/2 mensajes).</li>
+            <li><strong>Ring es robusto ante elecciones concurrentes:</strong> varias que arrancan a la vez convergen al mismo líder (cada nodo, al ver su propio ID en el mensaje, lo cambia de <code>ELECTION</code> a <code>COORDINATOR</code>).</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> comparar los tres algoritmos de exclusión mutua (centralizado = simple pero SPOF; Ricart-Agrawala = sin coordinador pero N² mensajes; token ring = justo pero con latencia) y saber que Bully y Ring siempre eligen al de mayor ID.</p>
       </section>

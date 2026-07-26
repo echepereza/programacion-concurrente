@@ -41,5 +41,15 @@ mod tests {
         <h3>Testear actores</h3>
         <p>Para actores se combina el <strong>mocking</strong> de actores con el patrón <strong>given-when-then</strong> (dado un estado, cuando llega un mensaje, entonces se espera cierto resultado), probando el manejo asincrónico. El reto que queda abierto es <strong>capturar los panics</strong> dentro de un actor y manejar <strong>timeouts</strong> para que el test no quede colgado.</p>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Cómo reduce Loom el espacio de estados:</strong> no permuta cada instrucción, solo ramifica en los <em>accesos a memoria compartida</em> donde puede haber precedencia entre hilos. Por eso no escala más allá de ~4-5 hilos ni con secciones críticas largas. Es el punto de vista <em>dinámico</em> (la Red de Petri es el <em>estático</em>). No corre para async/Tokio.</li>
+            <li><strong>Qué valida y qué no:</strong> detecta <em>deadlocks</em> automáticamente; la terminación y la independencia-del-orden las verificás vos con tus <code>assert</code>, que Loom corre sobre <em>todas</em> las permutaciones.</li>
+            <li><strong>mockall:</strong> <code>#[automock]</code> genera el mock; <code>#[double]</code> sustituye una implementación concreta por su mock vía un <code>use</code> (sin refactor de inyección) y hasta mockea métodos <em>estáticos</em>. En un mock no borres el <code>sleep</code>: cambialo por un <code>yield</code> (conserva el hint de context-switch). No <em>sobre</em>-mockees (si no, probás «que el código sea el que es»). El formato <em>given-when-then</em> es Gherkin (BDD).</li>
+            <li><strong>Panics en actores:</strong> un <code>assert</code> que falla dentro de un handler queda «tragado» en el actor system y NO hace fallar el test → guardá el valor y asertá <em>afuera</em>; como el sistema corre para siempre (los mensajes pueden venir de un socket), el test necesita <em>timeout + stop explícito</em>.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>Para el final/TP:</strong> saber que <code>#[cfg(test)]</code> compila los tests solo en modo test, que se mockea con <code>mockall</code> gracias a la inyección de dependencias, y sobre todo que <strong>Loom</strong> valida la corrección concurrente explorando los interleavings —lo que a mano es inviable—.</p>
       </section>

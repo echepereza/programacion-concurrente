@@ -122,6 +122,16 @@ flowchart LR
           <li><strong>Comunicación:</strong> intercambio de <em>datos</em> entre procesos para que el programa cumpla su función (memoria compartida o pasaje de mensajes).</li>
         </ul>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Motivación histórica:</strong> la velocidad de reloj de las CPU se amesetó alrededor de 2004 (límite físico/térmico, ~4 GHz); como ya no crece, se agregan <em>núcleos</em> → para aprovecharlos el programa <em>tiene</em> que ser concurrente.</li>
+            <li><strong>Dos motivaciones distintas:</strong> (1) <em>performance</em>, usar varios procesadores; (2) el problema lo <em>exige por naturaleza</em>: partes independientes (un browser atiende el input, repinta la pantalla y recibe red a la vez), aun con un solo core.</li>
+            <li><strong>En un solo núcleo la concurrencia NO acelera</strong> los ciclos de CPU: agrega overhead de context-switch. Corrige el error común «concurrencia = mejor uso de CPU».</li>
+            <li><strong>Atomicidad ≠ instrucción de máquina:</strong> una <em>operación</em> como «leer-sumar-escribir» un contador NO es atómica para el procesador; la atomicidad la garantizás vos. Ejemplo de <em>lost update</em>: dos molinetes de un estadio leen 0, ambos escriben 1 → entraron 2 personas pero el contador marca 1.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «Definir programa concurrente, proceso e instrucción atómica» y «por qué la salida de un programa concurrente puede variar». Respuesta: porque la ejecución es una intercalación arbitraria de instrucciones atómicas; solo se preserva el orden causal de cada proceso, así que hay múltiples escenarios y la corrección debe valer en <em>todos</em>.</p>
       </section>
 
@@ -192,6 +202,13 @@ stateDiagram-v2
           <figcaption>Un proceso pasa por Nuevo → Listo (ready) → Ejecutando (running) → puede bloquearse (waiting) por E/S o un recurso y volver a Listo → Finalizado (libera sus recursos y permite obtener su estado de finalización).</figcaption>
         </figure>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Proceso «teórico» ≠ proceso de Unix:</strong> en la materia «proceso» = cada programa secuencial que compone el programa concurrente. Los procesos son <em>unidades de aislamiento</em>; los threads, <em>unidades de ejecución</em>.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final/parcial:</strong> distinguir con precisión qué comparte cada abstracción. Regla mnemotécnica: <em>proceso = casa propia; threads = compañeros de la misma casa con su propia pieza (stack); tareas async = threads muy livianos y cooperativos que guardan su “pieza” dentro del Future.</em></p>
       </section>
 
@@ -253,6 +270,17 @@ fn main() {
         </ul>
         <div class="callout blue">Estos traits son <em>marker traits</em>: el compilador los deduce. Si intentás mandar un <code>Rc</code> a otro thread, el error de compilación es «<code>Rc&lt;T&gt;</code> cannot be sent between threads safely»: te está diciendo que uses <code>Arc</code>.</div>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Move vs Clone vs Copy:</strong> pasar un struct sin <code>Clone</code> a una función lo <em>mueve</em> (no compila si lo reusás). <code>Clone</code> = copia <em>explícita</em> (<code>.clone()</code>); <code>Copy</code> = marker trait, copia <em>silenciosa/automática</em> (tipos chicos en el stack). En concurrencia se dejan explícitas a propósito, para controlar qué se copia.</li>
+            <li><strong>La mutabilidad es propiedad del <em>binding</em>, no del objeto:</strong> no hay «objetos inmutables»; depende de la variable que tiene el valor.</li>
+            <li><strong><code>&amp;mut</code> se marca en ambos lados:</strong> a diferencia de C, no alcanza con que la función pida <code>&amp;mut</code>; el que llama también escribe <code>&amp;mut</code> al pasarlo (para hacerlo consciente).</li>
+            <li><strong>panic en hilo vs main:</strong> <code>spawn</code> devuelve un <code>JoinHandle</code>; <code>join()</code> da un <code>Result</code> (<code>Ok(valor)</code> o <code>Err</code> si paniqueó). Un panic en un hilo mata <em>solo</em> ese hilo; en el <code>main</code>, toda la app.</li>
+            <li><strong>Por defecto todo va al stack</strong> (a diferencia de Java, todo heap); <code>Box</code> es la primera forma de alocar en el heap (necesaria para tipos recursivos).</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> explicar cómo Rust previene condiciones de carrera. Idea a decir: las reglas de <em>ownership/borrowing</em> imponen «muchos <code>&amp;T</code> XOR un <code>&amp;mut T</code>» y se chequean en compilación; para compartir mutable entre hilos se usa <code>Arc&lt;Mutex&lt;…&gt;&gt;</code>; <code>Send</code>/<code>Sync</code> definen qué tipos son seguros de mover/compartir entre threads.</p>
       </section>
 
@@ -307,6 +335,26 @@ fn main() {
               <tr><td>API HTTP que corre un modelo NLP</td><td>Async para servir + <code>spawn_blocking</code> para el cómputo</td></tr>
             </tbody>
           </table></div>
+        </details>
+
+        <h3>Los mismos modelos en otros lenguajes</h3>
+        <p>La cátedra cierra mostrando que estos modelos son «ciudadanos de primera clase» en otros lenguajes (útil para ubicar cada modelo):</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Lenguaje</th><th>Modelo</th><th>Rasgos</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Go</strong></td><td>Canales (CSP)</td><td><em>goroutines</em> (green threads, stack de 2 KB que crece) + <em>channels</em>; «no comuniques compartiendo memoria; compartí memoria comunicando»; no tiene manejo de errores.</td></tr>
+            <tr><td><strong>Erlang / Elixir</strong></td><td>Actores</td><td>Procesos sobre la BEAM VM; «let it crash» + <em>supervisores</em> (OTP/GenServer). Lo usan WhatsApp y Discord.</td></tr>
+            <tr><td><strong>Clojure</strong></td><td>Memoria transaccional</td><td><em>Software Transactional Memory</em> (STM); dialecto de Lisp sobre la JVM.</td></tr>
+            <tr><td><strong>Julia</strong></td><td>Datos / paralelo</td><td>Cómputo científico; green threads + <strong>SIMD</strong> de fábrica; sintaxis tipo Python.</td></tr>
+          </tbody>
+        </table></div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Modelo ≠ herramienta:</strong> «productor-consumidor» y «threads» son <em>idioms</em>, no modelos. En el examen nombrá <strong>uno de los 5 modelos</strong> y justificá (navaja de Ockham). <code>SyncArbiter</code> es <em>implementación</em> (fork-join), no una respuesta de diseño; ofrecerlo como «solución mágica» descalifica.</li>
+            <li><strong>Fork-join: divisible es necesario pero no suficiente</strong> — además pide cómputo <em>CPU-intensivo</em>. «N APIs» es un fork por llamada pero se resuelve con <strong>async</strong> (es espera). «Procesar logs muy concurridos» = fork-join/MapReduce («muy concurrido» = genera muchos logs, no tiempo real); si fuera en vivo → un actor contador.</li>
+          </ul>
         </details>
 
         <p class="exam-answer"><strong>En el parcial:</strong> siempre justificar con <em>CPU-bound vs I/O-bound</em> y con «¿hay estado compartido que serializar o entidades que se comunican?». No basta nombrar el modelo: hay que dar ventaja y desventaja y decir cuál elegirías.</p>
@@ -389,6 +437,17 @@ flowchart LR
           </div>
           <figcaption>Word Count como <strong>DAG</strong> (el «Hello World» de MapReduce, con Rayon): <code>read_dir → flat_map(lines) → map(contar) → reduce</code> en árbol. El <em>map</em> procesa cada línea en paralelo; el <em>reduce</em> combina los conteos parciales de a pares hasta el resultado final.</figcaption>
         </figure>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Por qué se roba del INICIO de la deque</strong> (el docente avisa que «esta la tomo mucho y la responden mal»): el dueño trabaja su cola como <em>pila</em> (saca del <em>final</em>, las más nuevas); el ladrón roba del <em>inicio</em> (la más vieja), que está más arriba en el árbol de recursión → en promedio es la tarea <em>más grande</em> → robar grande minimiza la cantidad de robos/sincronización con colas ajenas.</li>
+            <li><strong>Granularidad de las tareas:</strong> demasiado finas (1 tarea por píxel) corren <em>peor</em> que en serie por overhead de crear/context-switch; demasiado gruesas dejan CPUs ociosas si son dispares. Óptimo: <em>shards</em> de tamaño uniforme. (1 por fila fue 10× más rápido que 1 por píxel.)</li>
+            <li><strong>API real:</strong> <code>rayon::join(a, b)</code> corre dos closures en paralelo y devuelve <code>(retA, retB)</code>; <code>std::thread::scope</code> existe en la std desde 1.63; <code>crossbeam::scope</code> devuelve <code>Err</code> si algún thread paniqueó. <strong>Nunca <code>unwrap</code></strong> en <code>JoinHandle::join</code>: manejá el panic (loggear y seguir).</li>
+            <li><strong><code>reduce</code> con fábrica:</strong> el valor inicial va como <em>closure</em>, no como valor, porque cada reducción concurrente necesita <em>su propio</em> acumulador (un solo <code>HashMap</code> sería escritura concurrente).</li>
+            <li><strong>GPU vs CPU:</strong> la CPU minimiza <em>latencia</em> (cachés, branch prediction, pocos hilos); la GPU maximiza <em>throughput</em> (misma instrucción sobre millones de datos, esconde la RAM lenta corriendo otro hilo). La copia host↔device suele <em>dominar</em> el tiempo → «viví en la GPU». La cátedra programa GPU con <strong>WebGPU/WGSL</strong> (no solo CUDA); un <em>workgroup</em> ≈ warp ≈ SIMD group, óptimo si es múltiplo de 32.</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> propiedades de fork-join (determinístico, sin races, aislado), qué es work stealing (deque, robar del inicio de otra cola) y por qué SIMD/GPU sirven para «mismo cómputo sobre muchos datos independientes» y no para lógica con estado compartido.</p>
       </section>
@@ -475,6 +534,16 @@ flowchart LR
           <div class="callout danger"><strong>No:</strong> cómputo <strong>CPU-intensivo</strong> (factoriales, producto de matrices). Un cómputo grande dentro de un <code>async</code> no llega a un <code>await</code> y por lo tanto <strong>no cede el control</strong> a otras tareas → mata la concurrencia. Para eso, <code>spawn_blocking</code> o fork-join.</div>
         </div>
         <p>Dato fino: los futures son <strong>functors</strong> (se pueden <code>map</code>) y <strong>monads</strong> (se pueden <code>flatten</code>), y se encadenan/combinan con <code>join</code>.</p>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>async ≠ concurrente:</strong> varios <code>await</code> seguidos resuelven <em>en secuencia</em> y <strong>suman</strong> los tiempos (bajar «hello» 2s + «world» 1s = <strong>3s</strong>). Se vuelven concurrentes solo si los combinás con <code>join!</code> (= <strong>2s</strong>). No hace falta spawnear tasks.</li>
+            <li><strong><code>thread::sleep</code> dentro de un <code>async</code> bloquea TODO el hilo</strong> (rompe la concurrencia: 2+1 vuelve a tardar 3s aun con <code>join!</code>). El compilador tira <em>warning</em>, no error. Solo se cede en un <code>await</code> con timers async.</li>
+            <li><strong>El executor no hace busy-poll:</strong> usa el <em>waker</em> (el <code>Context</code>, 2º parámetro de <code>poll</code>), avisado por el SO (timer, socket), para saber <em>cuándo</em> re-pollear.</li>
+            <li><strong><code>join_all</code>:</strong> convierte una <em>colección de futures</em> en un <em>future de la colección</em> (patrón para un servicio sin API bulk: una request por id, todas concurrentes).</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>Trampas de V/F frecuentes:</strong> «El que hace poll es el thread principal» → <em>Falso</em>, lo hace el <strong>executor/runtime</strong>. «poll se llama solo cuando la tarea puede progresar» → <em>Verdadero</em>. «El modelo piñata es colaborativo» → <em>Verdadero</em> (cooperativo). «La operación async inicia al llamar a la función <code>async</code>» → <em>Falso</em>: al invocarla solo se crea el <code>Future</code>; recién arranca al primer <code>poll</code>/<code>await</code>.</p>
       </section>
@@ -621,6 +690,18 @@ async fn main() {
           </table>
         </div>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Analogías del docente:</strong> sincrónico = <em>llamada telefónica</em> (ambos en sincronía); asincrónico = <em>email</em> (se acumulan en un buffer). Sin direccionamiento = <em>publicar en Twitter</em> (lo ven todos, lo procesa quien detecta que es para él). <code>do_send</code>/<code>try_send</code>/<code>send</code> = <em>tildes de WhatsApp</em>: sin tilde (se puede perder) / un tilde (te enterás si falla el envío) / esperás la respuesta.</li>
+            <li><strong>Canales std vs Tokio:</strong> <code>recv()</code> de <code>std::sync::mpsc</code> <em>bloquea</em> y NO implementa <code>Future</code>; los canales de Tokio sí (se usan con <code>await</code>). Para <em>múltiples consumidores</em>, como el <code>Receiver</code> no se clona, se envuelve en <code>Arc&lt;Mutex&lt;Receiver&gt;&gt;</code>.</li>
+            <li><strong>Orden de mensajes:</strong> garantizado <em>dentro</em> del mailbox de un mismo actor; <em>entre</em> actores distintos, NO.</li>
+            <li><strong>Sync Arbiter:</strong> contexto <em>síncrono</em> donde cada actor tiene su propio hilo del SO. Se usa cuando el handler hace cómputo pesado o llama código bloqueante: en el runtime default todo se multiplexa en <em>un</em> hilo, así que un bloqueo congela TODO el sistema de actores. Con &gt;1 hilo actúa como pool round-robin (N instancias con estado independiente).</li>
+            <li><strong>Anti-patrón (descalifica en el parcial):</strong> meter estado mutable compartido (un <code>Mutex</code>, etc.) <em>dentro</em> del estado de un actor. Los actores existen justamente para evitar eso.</li>
+            <li><strong>Diseñar con actores (metodología):</strong> (a) <em>nunca</em> bloquear ni pollear dentro de un handler → encolá el <code>Addr</code> del que pide y avisale cuando es su turno (preguntar «¿estás libre?» y dormir es busy-wait maquillado); (b) <em>un actor por recurso exclusivo</em>, no un gestor único (workers indistinguibles sí admiten cola/round-robin); (c) si «servir» es multi-paso, guardá una <em>cola de <code>Addr</code></em> en el estado; (d) <em>fan-out</em>: pedir 3 cosas = 3 mensajes en paralelo, armás cuando llegan las 3.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «motivación del modelo de actores, características y ciclo de vida en Actix». Motivación: evitar el estado mutable compartido y sus locks; cada actor es dueño de su estado y solo cambia procesando mensajes (uno a la vez) → sin races por diseño, escala a miles de entidades livianas, encaja en sistemas distribuidos (dirección remota). Características: aislados, mailbox FIFO, mensajes asincrónicos e inmutables, supervisión. Ciclo: Started → Running → Stopping → Stopped.</p>
       </section>
 
@@ -679,6 +760,16 @@ loop {
     if *listo.lock().unwrap() { break; }           // spin apretado -&gt; quema CPU
 }</code></pre>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Programa modelo de la SC:</strong> la definición formal es un <em>loop infinito</em> con parte crítica y parte NO crítica. La SC exige progreso/finalización; la no-crítica <em>no</em> (podés loopear ahí sin molestar). Si te piden «definir la sección crítica», explicá el programa modelo.</li>
+            <li><strong>TOCTOU</strong> (<em>time-of-check-to-time-of-use</em>): leer una variable, decidir con un <code>if</code> y actuar deja una ventana donde el valor cambia (race más sutil que el contador). Fix: no soltar el lock entre el chequeo y el uso.</li>
+            <li><strong><code>try_read</code>/<code>try_write</code> en loop = busy-wait:</strong> no bloquean; reintentarlos es espera activa (prohibida). Y meter un <code>sleep</code> en el loop de chequeo <em>sigue siendo</em> espera activa: re-evaluás la condición arbitrariamente.</li>
+            <li><strong>Sección crítica lo más chica posible:</strong> favorece el paralelismo y baja la probabilidad de un panic con el lock tomado (que envenenaría el lock).</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «explicar y comparar busy-wait, deadlock, race condition y starvation». Ejes para ordenar la respuesta: (1) ¿consume CPU inútilmente? → busy-wait; (2) ¿resultado depende del timing? → race; (3) ¿todos trabados esperándose? → deadlock; (4) ¿uno queda postergado para siempre mientras el resto avanza? → starvation.</p>
       </section>
 
@@ -725,6 +816,16 @@ let datos = RwLock::new(vec![1, 2, 3]);
 } // se libera el guard de escritura (Drop)</code></pre>
         <div class="callout danger"><strong>Locks envenenados (poisoned):</strong> si un thread que tomó el lock de forma <em>exclusiva</em> hace <code>panic!</code> mientras lo tiene, el lock queda <strong>envenenado</strong>: las llamadas posteriores a <code>read()</code>/<code>write()</code> devuelven <code>Err</code>. Es la razón por la que en Rust casi siempre ves <code>.lock().unwrap()</code>: estás propagando (o manejando) ese posible envenenamiento.</div>
         <p><strong>Mutex</strong> es el caso exclusivo puro (equivalente a un lock de escritura o semáforo binario). El patrón para mutar estado compartido entre hilos es <code>Arc&lt;Mutex&lt;T&gt;&gt;</code> (compartir + serializar).</p>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Tipos atómicos:</strong> <code>Arc&lt;AtomicUsize&gt;</code> permite mutar <em>sin</em> <code>Mutex</code> porque <code>fetch_add</code>/<code>fetch_sub</code> son atómicas por hardware; el <code>Ordering</code> (default <code>SeqCst</code>, el más estricto) fija el orden de memoria. El propio contador interno de <code>Arc</code> también es atómico.</li>
+            <li><strong>Self-deadlock:</strong> pedir <code>write()</code> teniendo un <code>read()</code> vivo en el <em>mismo</em> hilo se traba; Rust lo detecta solo por ser determinístico (un thread), no con varios.</li>
+            <li><strong>Granularidad del lock:</strong> el patrón es dos secciones críticas cortas —leer al inicio, escribir al final— con el <em>trabajo real fuera</em> del lock. Si los hilos viven dentro de la SC, todo se serializa y no tiene sentido tener varios.</li>
+            <li><strong><code>fcntl</code> con rangos de bytes:</strong> lockea un registro de tamaño fijo sin bloquear el resto del archivo; <code>flock</code>/<code>lockf</code> son más simples pero sin rangos.</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> diferencia shared vs exclusive, por qué los locks de Unix son <em>advisory</em>, y el patrón RAII: el guard libera solo → menos bugs de «me olvidé el <code>unlock()</code>». Mencionar poisoning como propiedad de seguridad de Rust.</p>
       </section>
@@ -818,6 +919,16 @@ impl Semaforo {
     }
 }</code></pre>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong><code>signal</code> despierta a uno al AZAR:</strong> <code>L</code> es un <em>conjunto</em> sin orden (ni FIFO ni prioridad). Esa arbitrariedad es, por diseño, lo que evita <em>starvation</em> (es equitativo). «Señalizar» viene de los semáforos ferroviarios; <code>P</code>/<code>V</code> son wait/signal en holandés (Dijkstra).</li>
+            <li><strong>System V vs POSIX:</strong> System V guarda info de control extra (PID del último, cuántos esperan, y cuántos esperan a que el contador llegue a 0). Ese último dato habilita <code>wait_for_0</code> (bloquear hasta 0) → una <em>barrera casera</em>.</li>
+            <li><strong>En Rust el semáforo es un crate externo</strong> (<code>std-semaphore</code>): <code>acquire</code>=wait, <code>release</code>=signal, <code>access</code> devuelve una guarda con auto-release (RAII). OJO: <code>access</code> NO sirve en productor-consumidor, porque ahí el <code>signal</code> ocurre en <em>otro</em> proceso que el <code>wait</code>.</li>
+            <li><strong>Tip de examen:</strong> en pseudocódigo con semáforos, <em>especificá siempre las condiciones iniciales</em> del contador. Con N productores/consumidores siguen siendo <strong>solo 2 semáforos</strong> (la cantidad de recurso es la misma) + 1 mutex para el buffer.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «describir cómo se implementan los monitores y sus métodos, y compararlos con semáforos». Puntos que no pueden faltar: variables de condición sin valor + FIFO; <code>waitC</code> siempre bloquea y libera el monitor; <code>signalC</code> no hace nada si la cola está vacía; y el <code>while</code> por spurious wakeup. Reconocer que <code>Mutex + Condvar</code> = monitor/semáforo.</p>
       </section>
 
@@ -893,6 +1004,15 @@ flowchart LR
           <li><strong>Fair:</strong> se respeta un orden (p. ej. FIFO) para que ninguno se muera de hambre.</li>
         </ul>
         <div class="callout blue">Es exactamente lo que ofrece <code>RwLock</code> (capítulo 09): <code>read()</code> = lock compartido, <code>write()</code> = lock exclusivo. La política de preferencia depende del SO.</div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Lector-escritor <em>fair</em> con cola de turnos:</strong> condvar + turno actual/próximo + contador de lectores + bool <code>writing</code>. Cada uno «saca número» al llegar; el lector, al entrar, <em>avanza</em> el turno (deja pasar a otro lector concurrente), el escritor <em>no</em> lo avanza (frena al escritor de atrás). Resuelve starvation de ambos lados (como el turnero de la farmacia).</li>
+            <li><strong>Barbero = rendezvous de dos semáforos invertidos:</strong> <code>acquire</code> en un thread / <code>release</code> en el otro (y viceversa); el barbero «duerme» en <code>acquire(clientes)</code> con el contador en 0.</li>
+            <li><strong>SETI/fork-join con barreras:</strong> hacen falta <em>dos</em> barreras por época —una para que todos empiecen recién cuando todos leyeron la señal, y otra para esperar que todos hayan leído antes de modificarla—. Ser <em>líder</em> de la barrera NO garantiza seguir ejecutando (podés ceder la CPU justo después).</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el parcial:</strong> te dan una red de Petri o un fragmento de código y tenés que <strong>reconocer el problema</strong> (casi siempre productor-consumidor o lector-escritor) y decir si la implementación es correcta o cómo mejorarla. Memorizá los semáforos de cada uno: <code>notEmpty</code>/<code>notFull</code> para productor-consumidor acotado.</p>
       </section>
@@ -1005,6 +1125,18 @@ flowchart LR
           <li><strong>Cliente-Servidor:</strong> lugares para peticiones/respuestas y transiciones para el procesamiento.</li>
         </ul>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Es un autómata finito NO determinista:</strong> las transiciones que consumen los <em>mismos</em> tokens compiten, y no controlás cuál dispara ni en qué orden (lo decide el scheduler). Es el interleaving del §1 hecho gráfico.</li>
+            <li><strong>Deadlock en el grafo de alcance:</strong> se ve como una <em>marca muerta</em> (sin transiciones habilitadas) a la que se llega por varios caminos = «estado que no terminó y no puede salir, necesita recursos que no tiene».</li>
+            <li><strong>Trampa: dos lugares ≠ un lugar con 2 tokens.</strong> Un lugar con 2 tokens habilita disparar <em>dos veces</em> la misma transición; separá los lugares si querés forzar «una y una».</li>
+            <li><strong>Arco inhibidor = un NOT lógico</strong> (se dibuja con un <em>puntito</em>, como el NOT de electrónica): la transición dispara solo si sus entradas comunes tienen token <em>Y</em> las inhibidoras están <em>vacías</em>. Sin él, muchos problemas «no tienen solución» con el álgebra ordinaria. Lector-escritor con preferencia de escritura: un lugar «escritor quiere» + arco inhibidor hacia la entrada de lectores.</li>
+            <li><strong>Análisis estático</strong> (herramienta <strong>PIPE</strong>): opera sobre la <em>matriz de incidencia</em>; detecta deadlock (y da el camino más corto hacia él), acotamiento e invariantes.</li>
+            <li><strong>En el examen:</strong> no dibujes arcos lugar-lugar ni transición-transición; hay que <em>graficar Y explicar</em> nombrando cada lugar y transición (no genérico: «P = hay ítem en el buffer», «T = procesar ítem»).</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final (Ej. típico de Petri):</strong> (1) describir Red Ordinaria vs General y qué son <code>I(t)</code>/<code>O(t)</code>; (2) modelar un sistema. Receta para modelar: identificá los <strong>lugares</strong> (estados/recursos, con su marca inicial), las <strong>transiciones</strong> (acciones), dibujá los arcos, y <strong>justificá con un invariante</strong> por qué la propiedad de seguridad (ej. «no más de N») se cumple. Cerrá con una <strong>secuencia de disparos válida</strong>.</p>
       </section>
 
@@ -1081,6 +1213,17 @@ sequenceDiagram
           <li><strong>Sagas:</strong> para transacciones <em>largas</em> que tocan muchos servicios, en vez de un lock global se ejecuta una secuencia de pasos, cada uno con su <strong>acción compensatoria</strong> (undo). Si un paso falla, se corren las compensaciones de los pasos previos. Sacrifica aislamiento estricto por disponibilidad (típico en microservicios).</li>
         </ul>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>2PC en la práctica — timeouts + keep-alive:</strong> en <em>prepare</em>, cada participante manda <em>keep-alive</em> («ya te escuché, lo estoy preparando»); mientras lo mande se lo considera vivo; silencio dentro del timeout = se trata como abort.</li>
+            <li><strong>Recuperación idempotente:</strong> ante una caída, el coordinador reenvía <code>prepare</code> con el <em>mismo</em> id y el participante responde <em>exactamente lo mismo</em> que la primera vez (guarda su respuesta). Ambos lados persisten su estado; el participante también corre su propio timeout (ej. libera el stock si no oye nada).</li>
+            <li><strong>Autoridad asimétrica del coordinador:</strong> puede <em>abortar</em> aunque todos hayan votado commit (ej. el usuario cerró la página), pero <em>nunca</em> commitea si alguno no dio OK. Como el commit no puede fallar y debe ser rápido, el trabajo pesado (autorizar el pago, reservar) va en <em>prepare</em> → 2PC exige transacciones cortas. (El coordinador ES el proceso que ejecuta la transacción; no hace falta elección de líder.)</li>
+            <li><strong>Git = concurrencia optimista:</strong> modifica esperando no colisionar; ante conflicto <em>mergea</em> en vez de abortar. La <em>granularidad</em> es la unidad mínima de conflicto/edición (puede ser la celda, no el archivo entero).</li>
+            <li><strong>Casos de error a validar:</strong> commitear una transacción abortada o nunca preparada, o abortar una ya commiteada → deben fallar.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> «explicar 2PC (ventajas/desventajas)» y «en qué casos usarías concurrencia optimista». Para el escenario de <em>compra de tickets / sobreventa</em>: describir 2PL, timestamps y optimista con pros y contras, y concluir que con la alta concurrencia de escritura de la hora pico conviene un esquema <strong>pesimista (2PL / timestamps)</strong> para prevenir compras duplicadas, dejando lo optimista para la parte de solo-lectura (mostrar disponibilidad).</p>
       </section>
 
@@ -1120,6 +1263,14 @@ flowchart LR
           </table>
         </div>
         <div class="callout">Ambos evitan la <strong>espera circular</strong> (condición de Coffman) porque solo se permite esperar en <em>una</em> dirección del orden temporal. La diferencia es a quién se aborta: en Wait-Die el joven se sacrifica; en Wound-Wait el viejo desaloja al joven.</div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>¿Por qué «gana» la más vieja?</strong> Criterio <em>estadístico</em>: la transacción vieja probablemente ya ejecutó más operaciones, así que rehacerla sale más caro → conviene preservarla y abortar/reintentar la joven. Mnemónico: «vieja espera, joven muere (<em>die</em>)».</li>
+            <li><strong>Quién aborta a quién:</strong> en <em>wait-die</em> el que pide se aborta a sí mismo; en <em>wound-wait</em> una transacción aborta a una <em>tercera</em> (la que tiene el recurso). Lo maneja un <em>gestor de transacciones</em> que registra las vivas con sus timestamps y puede matar hilos.</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> «explicar el sistema de deadlocks distribuido con un gráfico». Contar detección (centralizada con grafo + falsos deadlocks por mensajes desordenados; distribuida con probe y ciclo) y prevención (wait-die vs wound-wait con timestamps). El gráfico esperado es el ciclo de espera / recorrido del probe.</p>
       </section>
@@ -1178,6 +1329,16 @@ flowchart LR
             <figcaption><strong>Ring:</strong> el mensaje circula acumulando IDs; al volver, gana el mayor de la lista.</figcaption>
           </figure>
         </div>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>El rol del líder</strong> (por qué se elige): tener una instancia diferenciada sin configurarla a mano y sin punto único de fallo — réplica de escritura vs. standbys de solo lectura, coordinador de transacciones, nodo-gateway. «El líder hace lo que necesites que haga» (analogía: el Scrum Master que además coordina).</li>
+            <li><strong>ACKs y por qué UDP alcanza:</strong> en Bully el <code>OK</code> ya hace de ACK; son mensajitos aislados de pocos bytes, no importa el orden ni el control de flujo de TCP, solo confirmar recepción. En Ring cada reenvío espera su ACK; si no llega en tiempo, se da por caído al sucesor y se salta al siguiente.</li>
+            <li><strong>Ricart-Agrawala, matiz:</strong> cada uno responde «por mí, usala» (habla solo por sí); te percibís dueño al juntar el <code>OK</code> de <em>todos</em>. Precondición: conocer el conjunto <em>estático</em> de participantes; es all-to-all (~n²/2 mensajes).</li>
+            <li><strong>Ring es robusto ante elecciones concurrentes:</strong> varias que arrancan a la vez convergen al mismo líder (cada nodo, al ver su propio ID en el mensaje, lo cambia de <code>ELECTION</code> a <code>COORDINATOR</code>).</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>En el final:</strong> comparar los tres algoritmos de exclusión mutua (centralizado = simple pero SPOF; Ricart-Agrawala = sin coordinador pero N² mensajes; token ring = justo pero con latencia) y saber que Bully y Ring siempre eligen al de mayor ID.</p>
       </section>
@@ -1257,6 +1418,16 @@ fn cliente() -&gt; std::io::Result&lt;()&gt; {
 }</code></pre>
         <p><code>TcpStream</code> implementa <code>Read</code> y <code>Write</code>; <code>flush()</code> fuerza el envío del buffer; la conexión se cierra al hacer <strong>drop</strong> del stream (o explícitamente con <code>shutdown()</code>, que puede cerrar el extremo de lectura, de escritura o ambos).</p>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Retos al pasar de channels a sockets:</strong> hay que <em>serializar</em> (espacios separados, no pasás punteros; cuidado con endianness/arquitecturas), <em>delimitar</em> mensajes, manejar (des)conexión, latencia de red no despreciable, discovery, pérdida/reordenamiento y relojes imposibles de sincronizar (afecta timeouts). «Un hilo por conexión no va más».</li>
+            <li><strong>Delimitar mensajes:</strong> el socket es un buffer de bytes sin marcas → necesitás un protocolo (líneas con <code>\n</code>, <code>BufReader::read_line</code>). <code>read()</code> que devuelve <code>Ok(0)</code> = conexión cerrada limpia. Y <code>read()</code> puede devolver <em>menos</em> bytes de los pedidos → hay que reintentar en loop hasta completar.</li>
+            <li><strong>Actix <code>StreamHandler</code> &gt; hilo-por-conexión:</strong> entrega cada mensaje entrante directo al actor (te ahorra el loop poleador que forwardea); una desconexión mata al actor por defecto.</li>
+            <li><strong>ACK de aplicación ≠ ACK de TCP:</strong> que TCP confirme paquetes no reemplaza la confirmación a nivel app; el par puede estar colgado mientras TCP sigue drenando el buffer.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> distinguir stream (TCP, confiable) vs datagram (UDP, no confiable), servidor iterativo vs concurrente, y el orden de syscalls del lado servidor (<code>bind → listen → accept</code>) vs cliente (<code>connect</code>).</p>
       </section>
 
@@ -1302,6 +1473,17 @@ fn cliente() -&gt; std::io::Result&lt;()&gt; {
         </ul>
         <div class="callout blue"><strong>Conocimiento:</strong> el <strong>conocimiento local</strong> es el contenido de la memoria local de <code>x</code> y lo que se deriva de ella; en ausencia de fallas no se puede perder. Tipos: <strong>información métrica</strong> (datos numéricos: nº de nodos, aristas, diámetro), <strong>propiedades topológicas</strong> (p. ej. «el grafo es un anillo/árbol») y <strong>mapas topológicos</strong> (mapa de la vecindad hasta distancia <code>d</code>, p. ej. la matriz de adyacencia).</div>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Impulso espontáneo — ejemplo:</strong> el docente lo ejemplifica con los <em>spurious wakeups</em> de las variables de condición (por eso el <code>waitC</code> va en un <code>while</code>); sirve para <em>iniciar actividad autónoma</em> (p. ej. el iniciador de un algoritmo, que arranca sin recibir mensaje).</li>
+            <li><strong>Delays unitarios = por ENLACE, no por mensaje:</strong> cada <em>enlace</em> demora 1 unidad; un mensaje que cruza <code>k</code> enlaces demora <code>k</code>. En un anillo de 8 con 4 saltos → 4 unidades.</li>
+            <li><strong>Cómo homogeneizar un protocolo:</strong> cargar el <em>mismo</em> programa en todas las entidades; un <code>if soy_líder</code> decide, y lo único que cambia es el estado interno (<code>status(x)</code>).</li>
+            <li><strong>El costo no es solo <code>M</code>:</strong> también pesan la <em>carga por unidad</em> (construir el mensaje) y la <em>carga de transmisión</em> (tamaño); mensajes muy grandes pueden volver inviable un protocolo (redes satelitales / sin fragmentación).</li>
+            <li><strong><code>NIN</code>/<code>NOUT</code> = vecinos DIRECTOS</strong> (a un solo salto, sin reenvío): en un anillo alcanzás a cualquiera, pero directo solo al anterior/siguiente.</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final (aparece seguido):</strong> «qué es una entidad y enumerar sus capacidades»; «explicar Acción, Regla y Comportamiento y cómo se caracteriza» (respuesta: por su conjunto de reglas <code>estado × evento → acción</code>, que es su protocolo, con una única regla por par estado-evento, y puede ser homogéneo); «qué es el Conocimiento y qué tipos existen» (métrico, topológico, mapas).</p>
       </section>
 
@@ -1317,6 +1499,16 @@ fn cliente() -&gt; std::io::Result&lt;()&gt; {
           <li><strong>Tipos de servicio:</strong> <em>sin conexión</em> (UDP puro, sin control de flujo ni errores), <em>sin conexión con ACK</em> (acuse por cada dato, más confiable sin enlace dedicado) y <em>con conexión</em> (TCP: tres fases —establecimiento, datos, cierre— con control de flujo y de errores).</li>
           <li><strong>OSI:</strong> estándar de 7 capas que define interfaces y protocolos en cada nivel. <strong>TCP/IP</strong> es la pila real (IP, TCP, UDP y protocolos de aplicación como HTTP, FTP).</li>
         </ul>
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>PDU por capa</strong> (se pregunta): <em>bit</em> (física) → <em>trama/frame</em> (enlace) → <em>paquete</em> (red/IP) → <em>segmento</em> (transporte/TCP).</li>
+            <li><strong>Qué capas corre cada nodo:</strong> las capas 1-3 (física, enlace, red) las corren emisor, receptor <em>y todos los routers intermedios</em> (por el enrutamiento); la capa 4 (TCP/UDP) <em>solo</em> en los extremos.</li>
+            <li><strong>IP:</strong> sin conexión, sin retransmisión; su checksum verifica <em>solo el encabezado</em>, no el cuerpo. Servicios de capa de red: enrutamiento, fragmentación/reensamblado y direccionamiento.</li>
+            <li><strong>Capa de presentación:</strong> uniformiza la representación — endianness (big/little) y encodings (ASCII/Latin-1/UTF-8, emojis). En TCP/IP, sesión y presentación viven <em>dentro</em> del protocolo de aplicación (p. ej. las cookies de HTTP).</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final:</strong> suele venir como apoyo de sockets. Recordar: TCP = con conexión, confiable, control de flujo/errores; UDP = sin conexión, sin garantías; y que cada capa da un <em>servicio</em> a la de arriba y habla un <em>protocolo</em> con su par.</p>
       </section>
 
@@ -1362,6 +1554,16 @@ mod tests {
 
         <h3>Testear actores</h3>
         <p>Para actores se combina el <strong>mocking</strong> de actores con el patrón <strong>given-when-then</strong> (dado un estado, cuando llega un mensaje, entonces se espera cierto resultado), probando el manejo asincrónico. El reto que queda abierto es <strong>capturar los panics</strong> dentro de un actor y manejar <strong>timeouts</strong> para que el test no quede colgado.</p>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Cómo reduce Loom el espacio de estados:</strong> no permuta cada instrucción, solo ramifica en los <em>accesos a memoria compartida</em> donde puede haber precedencia entre hilos. Por eso no escala más allá de ~4-5 hilos ni con secciones críticas largas. Es el punto de vista <em>dinámico</em> (la Red de Petri es el <em>estático</em>). No corre para async/Tokio.</li>
+            <li><strong>Qué valida y qué no:</strong> detecta <em>deadlocks</em> automáticamente; la terminación y la independencia-del-orden las verificás vos con tus <code>assert</code>, que Loom corre sobre <em>todas</em> las permutaciones.</li>
+            <li><strong>mockall:</strong> <code>#[automock]</code> genera el mock; <code>#[double]</code> sustituye una implementación concreta por su mock vía un <code>use</code> (sin refactor de inyección) y hasta mockea métodos <em>estáticos</em>. En un mock no borres el <code>sleep</code>: cambialo por un <code>yield</code> (conserva el hint de context-switch). No <em>sobre</em>-mockees (si no, probás «que el código sea el que es»). El formato <em>given-when-then</em> es Gherkin (BDD).</li>
+            <li><strong>Panics en actores:</strong> un <code>assert</code> que falla dentro de un handler queda «tragado» en el actor system y NO hace fallar el test → guardá el valor y asertá <em>afuera</em>; como el sistema corre para siempre (los mensajes pueden venir de un socket), el test necesita <em>timeout + stop explícito</em>.</li>
+          </ul>
+        </details>
 
         <p class="exam-answer"><strong>Para el final/TP:</strong> saber que <code>#[cfg(test)]</code> compila los tests solo en modo test, que se mockea con <code>mockall</code> gracias a la inyección de dependencias, y sobre todo que <strong>Loom</strong> valida la corrección concurrente explorando los interleavings —lo que a mano es inviable—.</p>
       </section>

@@ -106,5 +106,17 @@ flowchart LR
           <li><strong>Cliente-Servidor:</strong> lugares para peticiones/respuestas y transiciones para el procesamiento.</li>
         </ul>
 
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>Es un autómata finito NO determinista:</strong> las transiciones que consumen los <em>mismos</em> tokens compiten, y no controlás cuál dispara ni en qué orden (lo decide el scheduler). Es el interleaving del §1 hecho gráfico.</li>
+            <li><strong>Deadlock en el grafo de alcance:</strong> se ve como una <em>marca muerta</em> (sin transiciones habilitadas) a la que se llega por varios caminos = «estado que no terminó y no puede salir, necesita recursos que no tiene».</li>
+            <li><strong>Trampa: dos lugares ≠ un lugar con 2 tokens.</strong> Un lugar con 2 tokens habilita disparar <em>dos veces</em> la misma transición; separá los lugares si querés forzar «una y una».</li>
+            <li><strong>Arco inhibidor = un NOT lógico</strong> (se dibuja con un <em>puntito</em>, como el NOT de electrónica): la transición dispara solo si sus entradas comunes tienen token <em>Y</em> las inhibidoras están <em>vacías</em>. Sin él, muchos problemas «no tienen solución» con el álgebra ordinaria. Lector-escritor con preferencia de escritura: un lugar «escritor quiere» + arco inhibidor hacia la entrada de lectores.</li>
+            <li><strong>Análisis estático</strong> (herramienta <strong>PIPE</strong>): opera sobre la <em>matriz de incidencia</em>; detecta deadlock (y da el camino más corto hacia él), acotamiento e invariantes.</li>
+            <li><strong>En el examen:</strong> no dibujes arcos lugar-lugar ni transición-transición; hay que <em>graficar Y explicar</em> nombrando cada lugar y transición (no genérico: «P = hay ítem en el buffer», «T = procesar ítem»).</li>
+          </ul>
+        </details>
+
         <p class="exam-answer"><strong>En el final (Ej. típico de Petri):</strong> (1) describir Red Ordinaria vs General y qué son <code>I(t)</code>/<code>O(t)</code>; (2) modelar un sistema. Receta para modelar: identificá los <strong>lugares</strong> (estados/recursos, con su marca inicial), las <strong>transiciones</strong> (acciones), dibujá los arcos, y <strong>justificá con un invariante</strong> por qué la propiedad de seguridad (ej. «no más de N») se cumple. Cerrá con una <strong>secuencia de disparos válida</strong>.</p>
       </section>
