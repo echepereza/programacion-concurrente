@@ -1,0 +1,95 @@
+      <section class="chapter" id="async" data-title="programacion asincronica async await futures poll ready pending modelo pinata executor block_on spawn spawn_local spawn_blocking yield_now pin unpin tokio async-std runtime io bound cpu bound functor monad join reactor cooperativo">
+        <div class="chapter-head">
+          <div class="chapter-number">07</div>
+          <div><h2>Programación asincrónica (async/await)</h2></div>
+        </div>
+
+        <p>Las <strong>tareas asincrónicas</strong> permiten manejar concurrencia de forma mucho más liviana que los threads, sobre todo para <strong>operaciones de E/S</strong>. <strong>El problema de los threads:</strong> si una app crea muchísimos threads, la memoria de sus <em>stacks</em> (p. ej. ~100 KB c/u) se vuelve un problema. Las tareas async son mucho más livianas (miles o decenas de miles), más rápidas de crear y con menor overhead de memoria; un hilo puede tomar otras tareas mientras una espera que se complete una llamada al sistema.</p>
+
+        <h3>Futures y el modelo piñata</h3>
+        <p>Un <strong><code>Future</code></strong> (trait <code>std::future::Future</code>) representa una operación que se puede <em>probar</em> si terminó, mediante <code>poll</code>:</p>
+        <ul class="study-list">
+          <li><code>poll</code> <strong>nunca bloquea</strong>. Si la operación terminó retorna <code>Poll::Ready(out)</code>; si no, <code>Poll::Pending</code>.</li>
+          <li>El future almacena todo lo necesario para hacer el pedido y <strong>el punto donde retomar</strong> en el próximo <code>poll</code>, más su estado local.</li>
+          <li>Se llama a <code>poll</code> <strong>solo cuando es probable que la tarea progrese</strong> (lo decide el runtime, avisado por el reactor de E/S).</li>
+        </ul>
+        <div class="callout"><strong>Modelo piñata:</strong> al <code>Future</code> «se lo golpea» con <code>poll</code> hasta que <em>cae</em> el valor. Es <strong>cooperativo</strong>: la tarea solo cede control en los puntos <code>await</code>; nadie la interrumpe por la fuerza.</div>
+
+        <figure class="diagram">
+          <div class="mermaid">
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Pending: poll sin progreso
+    Pending --> Ready: poll con Ready
+    Ready --> [*]: devuelve el valor
+          </div>
+          <figcaption>El executor pollea el future; mientras esté <code>Pending</code> lo deja «dormido» y atiende otras tareas; cuando el reactor avisa que puede progresar, lo vuelve a pollear.</figcaption>
+        </figure>
+
+        <h3>Funciones <code>async</code> y expresiones <code>await</code></h3>
+        <ul class="study-list">
+          <li>Invocar una función <code>async</code> <strong>retorna inmediatamente un <code>Future</code></strong>, <em>antes</em> de ejecutar el cuerpo. El future contiene argumentos, variables locales, etc.</li>
+          <li>La <strong>primera vez que se pollea</strong>, el cuerpo corre hasta el primer <code>await</code>.</li>
+          <li><code>await</code> toma la propiedad del <code>Future</code> interno y lo pollea: si está <code>Ready</code>, sigue con su valor; si está <code>Pending</code>, la función que espera también retorna <code>Pending</code> (propaga la suspensión).</li>
+          <li><code>await</code> solo puede usarse dentro de funciones <code>async</code>.</li>
+        </ul>
+        <pre data-code="rust">async fn bajar(url: &str) -> String { /* ... */ }
+
+async fn combinar() -> usize {
+    // Se lanzan los dos futures y se esperan concurrentemente con join.
+    let (a, b) = futures::join!(bajar("api/1"), bajar("api/2"));
+    a.len() + b.len()
+}</pre>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    U["Usuario"] --> RQ["Request"]
+    RQ --> DB[("DB")]
+    DB --> S1["Servicio 1"]
+    DB --> S2["Servicio 2"]
+    DB --> SN["Servicio N"]
+    S1 --> RS["Response"]
+    S2 --> RS
+    SN --> RS
+          </div>
+          <figcaption>Caso real de async: un request consulta la DB y dispara N llamadas a servicios externos <strong>concurrentemente</strong> (fan-out con <code>join</code>). Mientras cada una espera su I/O, el mismo hilo atiende las otras; la <code>Response</code> se arma cuando todas resolvieron. Con threads bloqueantes esto costaría N stacks; con async, N tareas livianas.</figcaption>
+        </figure>
+
+        <h3>Executors y runtimes</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Primitiva</th><th>Qué hace</th></tr></thead>
+            <tbody>
+              <tr><td><code>block_on(fut)</code></td><td>Función <strong>sincrónica</strong> que espera el valor final de un future: adapta el mundo async al sync. <strong>No usar dentro de un <code>async</code></strong> (bloquearía todo el thread).</td></tr>
+              <tr><td><code>spawn_local(fut)</code></td><td>Agrega el future a un pool que se pollea en el <code>block_on</code> (análogo a <code>spawn</code> de threads, mismo hilo).</td></tr>
+              <tr><td><code>spawn(fut)</code></td><td>Crea la tarea y la coloca en el pool de threads dedicado a pollear futures; no necesita <code>block_on</code>.</td></tr>
+              <tr><td><code>spawn_blocking(f)</code></td><td>Manda la tarea a <strong>otro thread del SO</strong> para cómputo pesado o bloqueante, sin frenar el executor.</td></tr>
+              <tr><td><code>yield_now()</code></td><td>Cede voluntariamente el control a otra tarea (favorece el paralelismo cooperativo).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Un <strong>runtime</strong> (Tokio, async-std) trae el <strong>executor</strong> (traduce <code>await</code> en llamadas a <code>poll</code> y gestiona hilos) más bibliotecas de E/S asincrónica, timers, locks y canales.</p>
+
+        <h3>Pin y Unpin (por qué existen)</h3>
+        <p>Los tipos autogenerados de <code>async</code> que implementan <code>Future</code> guardan <strong>referencias a sí mismos</strong> (self-references) para recordar dónde retomar. Si se <em>movieran</em> en memoria, esas referencias internas quedarían colgadas. <code>Pin&lt;T&gt;</code> «clava» un valor <code>!Unpin</code> para impedir que se mueva. Por defecto casi todos los tipos son <code>Unpin</code>.</p>
+
+        <h3>Cuándo (y cuándo no) usar async</h3>
+        <div class="cmp two">
+          <div class="callout"><strong>Sí:</strong> tareas <strong>I/O-intensivas</strong> —consultar servicios externos, leer archivos, servir requests HTTP— donde la mayor parte del tiempo se <em>espera</em>.</div>
+          <div class="callout danger"><strong>No:</strong> cómputo <strong>CPU-intensivo</strong> (factoriales, producto de matrices). Un cómputo grande dentro de un <code>async</code> no llega a un <code>await</code> y por lo tanto <strong>no cede el control</strong> a otras tareas → mata la concurrencia. Para eso, <code>spawn_blocking</code> o fork-join.</div>
+        </div>
+        <p>Dato fino: los futures son <strong>functors</strong> (se pueden <code>map</code>) y <strong>monads</strong> (se pueden <code>flatten</code>), y se encadenan/combinan con <code>join</code>.</p>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>async ≠ concurrente:</strong> varios <code>await</code> seguidos resuelven <em>en secuencia</em> y <strong>suman</strong> los tiempos (bajar «hello» 2s + «world» 1s = <strong>3s</strong>). Se vuelven concurrentes solo si los combinás con <code>join!</code> (= <strong>2s</strong>). No hace falta spawnear tasks.</li>
+            <li><strong><code>thread::sleep</code> dentro de un <code>async</code> bloquea TODO el hilo</strong> (rompe la concurrencia: 2+1 vuelve a tardar 3s aun con <code>join!</code>). El compilador tira <em>warning</em>, no error. Solo se cede en un <code>await</code> con timers async.</li>
+            <li><strong>El executor no hace busy-poll:</strong> usa el <em>waker</em> (el <code>Context</code>, 2º parámetro de <code>poll</code>), avisado por el SO (timer, socket), para saber <em>cuándo</em> re-pollear.</li>
+            <li><strong><code>join_all</code>:</strong> convierte una <em>colección de futures</em> en un <em>future de la colección</em> (patrón para un servicio sin API bulk: una request por id, todas concurrentes).</li>
+          </ul>
+        </details>
+
+        <p class="exam-answer"><strong>Trampas de V/F frecuentes:</strong> «El que hace poll es el thread principal» → <em>Falso</em>, lo hace el <strong>executor/runtime</strong>. «poll se llama solo cuando la tarea puede progresar» → <em>Verdadero</em>. «El modelo piñata es colaborativo» → <em>Verdadero</em> (cooperativo). «La operación async inicia al llamar a la función <code>async</code>» → <em>Falso</em>: al invocarla solo se crea el <code>Future</code>; recién arranca al primer <code>poll</code>/<code>await</code>.</p>
+      </section>

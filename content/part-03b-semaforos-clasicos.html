@@ -1,6 +1,6 @@
       <section class="chapter" id="semaforos" data-title="semaforos barreras monitores wait signal p v binario mutex invariante variable de condicion waitC signalC empty spurious wakeup while notify notifyAll synchronized java volatile condvar armar semaforo con monitores barrier leader">
         <div class="chapter-head">
-          <div class="chapter-number">10</div>
+          <div class="chapter-number">12</div>
           <div><h2>Semáforos, barreras y monitores</h2></div>
         </div>
 
@@ -102,7 +102,7 @@ impl Semaforo {
 
       <section class="chapter" id="clasicos" data-title="problemas clasicos sincronizacion productor consumidor buffer acotado infinito notEmpty notFull barbero dormilon filosofos comensales deadlock fumadores patil lector escritor preferencia readers writers fifo">
         <div class="chapter-head">
-          <div class="chapter-number">11</div>
+          <div class="chapter-number">13</div>
           <div><h2>Problemas clásicos de sincronización</h2></div>
         </div>
 
@@ -151,7 +151,7 @@ flowchart LR
         </figure>
 
         <h4>Solución distribuida de Chandy-Misra</h4>
-        <p>Versión por <strong>pasaje de mensajes</strong> (sin memoria compartida), <strong>libre de deadlock</strong>, que se implementa naturalmente con <a href="#mensajes">actores</a>. Reglas:</p>
+        <p>Versión por <strong>pasaje de mensajes</strong> (sin memoria compartida), <strong>libre de deadlock</strong>, que se implementa naturalmente con <a href="#actores">actores</a>. Reglas:</p>
         <ul class="study-list">
           <li>Por cada par de filósofos que compiten por un palito se crea <strong>un palito</strong>, asignado al inicio al filósofo de <strong>ID más bajo</strong> (rompe la simetría → evita la espera circular).</li>
           <li>Cada palito está <strong>sucio</strong> o <strong>limpio</strong>; inicialmente todos están sucios.</li>

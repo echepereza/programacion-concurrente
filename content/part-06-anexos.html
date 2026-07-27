@@ -10,20 +10,20 @@
 
         <h3>Final 16/07/2026 — resuelto</h3>
         <ol class="study-list">
-          <li><strong>Redes de Petri:</strong> Red Ordinaria vs General, <code>I(t)</code>/<code>O(t)</code>, y modelar la reserva de 3 asientos. → Resuelto completo en <a href="#petri">§12 Redes de Petri</a> (lugares <code>Libres</code>/<code>Ocupados</code>, invariante <code>Libres+Ocupados=3</code>, secuencia de disparos).</li>
-          <li><strong>Monitores:</strong> implementación, métodos y comparación con semáforos. → <a href="#semaforos">§10</a>: variables de condición (FIFO, sin valor), <code>waitC</code> siempre bloquea y libera el monitor, <code>signalC</code> no hace nada si la cola está vacía; tabla semáforo vs monitor.</li>
-          <li><strong>Transacciones:</strong> 2PC (ventajas/desventajas) y cuándo usar concurrencia optimista. → <a href="#transacciones">§13</a>: 2PC atómico pero bloqueante y con SPOF; optimista conviene con <em>baja contención</em> y mayoría de lecturas.</li>
-          <li><strong>Ambientes distribuidos:</strong> Acción/Regla/Comportamiento y Conocimiento. → <a href="#ambientes">§17</a>.</li>
+          <li><strong>Redes de Petri:</strong> Red Ordinaria vs General, <code>I(t)</code>/<code>O(t)</code>, y modelar la reserva de 3 asientos. → Resuelto completo en <a href="#petri">§14 Redes de Petri</a> (lugares <code>Libres</code>/<code>Ocupados</code>, invariante <code>Libres+Ocupados=3</code>, secuencia de disparos).</li>
+          <li><strong>Monitores:</strong> implementación, métodos y comparación con semáforos. → <a href="#semaforos">§12</a>: variables de condición (FIFO, sin valor), <code>waitC</code> siempre bloquea y libera el monitor, <code>signalC</code> no hace nada si la cola está vacía; tabla semáforo vs monitor.</li>
+          <li><strong>Transacciones:</strong> 2PC (ventajas/desventajas) y cuándo usar concurrencia optimista. → <a href="#transacciones">§15</a>: 2PC atómico pero bloqueante y con SPOF; optimista conviene con <em>baja contención</em> y mayoría de lecturas.</li>
+          <li><strong>Ambientes distribuidos:</strong> Acción/Regla/Comportamiento y Conocimiento. → <a href="#ambientes">§19</a>.</li>
           <li><strong>Diseño de un sistema (venta online):</strong> resuelto abajo.</li>
         </ol>
 
         <h3>Final 09/07/2026 — resuelto</h3>
         <ol class="study-list">
-          <li><strong>Comparar</strong> busy-wait, deadlock, race condition y starvation. → <a href="#correccion">§8</a> (tabla de los cuatro).</li>
-          <li><strong>Modelo de actores:</strong> motivación, características y ciclo de vida en Actix. → <a href="#mensajes">§7</a>.</li>
-          <li><strong>Deadlocks distribuidos</strong> + gráfico. → <a href="#deadlocks">§14</a> (detección centralizada/probe, prevención wait-die/wound-wait).</li>
-          <li><strong>Entidad</strong> en un ambiente distribuido y sus capacidades. → <a href="#ambientes">§17</a>.</li>
-          <li><strong>Compra-venta de tickets en hora pico</strong> (prevenir compras duplicadas, mucha lectura y escritura): explicar 2PL, timestamps y optimista y elegir. → <a href="#transacciones">§13</a>: con alta contención de escritura conviene <strong>pesimista (2PL / timestamps)</strong> para evitar la sobreventa; optimista solo para la parte de lectura.</li>
+          <li><strong>Comparar</strong> busy-wait, deadlock, race condition y starvation. → <a href="#correccion">§10</a> (tabla de los cuatro).</li>
+          <li><strong>Modelo de actores:</strong> motivación, características y ciclo de vida en Actix. → <a href="#actores">§9</a>.</li>
+          <li><strong>Deadlocks distribuidos</strong> + gráfico. → <a href="#deadlocks">§16</a> (detección centralizada/probe, prevención wait-die/wound-wait).</li>
+          <li><strong>Entidad</strong> en un ambiente distribuido y sus capacidades. → <a href="#ambientes">§19</a>.</li>
+          <li><strong>Compra-venta de tickets en hora pico</strong> (prevenir compras duplicadas, mucha lectura y escritura): explicar 2PL, timestamps y optimista y elegir. → <a href="#transacciones">§15</a>: con alta contención de escritura conviene <strong>pesimista (2PL / timestamps)</strong> para evitar la sobreventa; optimista solo para la parte de lectura.</li>
         </ol>
 
         <h3>Diseño de un sistema — Venta online con reserva de stock</h3>
@@ -106,7 +106,7 @@ impl Handler<Reservar> for Producto {
     }
 }
 // Confirmar: stock -= qty; reservado -= qty.   Liberar: reservado -= qty.</pre>
-        <div class="callout blue">Este diseño combina tres temas del programa: <strong>actores</strong> (§7, aislamiento sin locks), <strong>transaccionalidad</strong> (§13, reserva + rollback) y el <strong>invariante de capacidad</strong> de las <strong>Redes de Petri</strong> (§12, <code>reservado ≤ stock</code>). Mostrar esa integración es lo que distingue un buen final.</div>
+        <div class="callout blue">Este diseño combina tres temas del programa: <strong>actores</strong> (§9, aislamiento sin locks), <strong>transaccionalidad</strong> (§15, reserva + rollback) y el <strong>invariante de capacidad</strong> de las <strong>Redes de Petri</strong> (§14, <code>reservado ≤ stock</code>). Mostrar esa integración es lo que distingue un buen final.</div>
       </section>
 
       <section class="chapter" id="ejercicios" data-title="banco de ejercicios preguntas de final parciales resueltos por tipo de ejercicio busy wait analisis codigo semaforo condvar if while spurious wakeup verdadero falso async elegir modelo pseudocodigo N threads productor consumidor lector escritor petri restaurante actores seccion critica programa modelo correccion safety liveness deadlock wait-die wound-wait grafo de alcance fork join work stealing osi capas sockets streaming tcp udp channels unix ambientes distribuidos eventos ring costo complejidad estado interno entradas conciertos 2pc votos eleccion mesa contador">
@@ -119,15 +119,15 @@ impl Handler<Reservar> for Producto {
         <h3>Ej 1 — Sección crítica y corrección</h3>
         <details>
           <summary>Definir el problema de la sección crítica: programa modelo y especificaciones de corrección</summary>
-          <p>El <strong>programa modelo</strong> es el esquema abstracto de cada proceso: un <strong>ciclo infinito</strong> cuyo código se divide en <em>parte crítica</em> (accede a recursos compartidos) y <em>parte no-crítica</em>. La <strong>sección crítica</strong> debe progresar y finalizar eventualmente. Especificaciones: <strong>exclusión mutua</strong> (sus instrucciones no se intercalan), <strong>ausencia de deadlock</strong> (si dos intentan entrar, al menos uno lo logra) y <strong>ausencia de starvation</strong> (si un proceso intenta entrar, eventualmente entra). Ver <a href="#correccion">§8</a>.</p>
+          <p>El <strong>programa modelo</strong> es el esquema abstracto de cada proceso: un <strong>ciclo infinito</strong> cuyo código se divide en <em>parte crítica</em> (accede a recursos compartidos) y <em>parte no-crítica</em>. La <strong>sección crítica</strong> debe progresar y finalizar eventualmente. Especificaciones: <strong>exclusión mutua</strong> (sus instrucciones no se intercalan), <strong>ausencia de deadlock</strong> (si dos intentan entrar, al menos uno lo logra) y <strong>ausencia de starvation</strong> (si un proceso intenta entrar, eventualmente entra). Ver <a href="#correccion">§10</a>.</p>
         </details>
         <details>
           <summary>¿Cuál es la importancia de los criterios de corrección?</summary>
-          <p>En concurrencia la <strong>salida depende del escenario</strong> de ejecución, no solo de la entrada, así que no alcanza con debuggear (a diferencia del código secuencial, determinístico). Por eso se prueban dos clases de propiedades: <strong>Safety</strong> (verdadera <em>siempre</em>: exclusión mutua, ausencia de deadlock) y <strong>Liveness</strong> (verdadera <em>eventualmente</em>: ausencia de starvation, fairness). Ver <a href="#correccion">§8</a>.</p>
+          <p>En concurrencia la <strong>salida depende del escenario</strong> de ejecución, no solo de la entrada, así que no alcanza con debuggear (a diferencia del código secuencial, determinístico). Por eso se prueban dos clases de propiedades: <strong>Safety</strong> (verdadera <em>siempre</em>: exclusión mutua, ausencia de deadlock) y <strong>Liveness</strong> (verdadera <em>eventualmente</em>: ausencia de starvation, fairness). Ver <a href="#correccion">§10</a>.</p>
         </details>
         <details>
           <summary>¿Qué es un deadlock y qué consecuencias tiene? ¿Y en distribuido?</summary>
-          <p>Dos o más procesos esperan por un recurso que el otro tiene → <strong>dependencia cíclica</strong>, ninguno progresa (ej.: P1 tiene el lock A y espera B; P2 tiene B y espera A). La parte afectada del sistema deja de progresar, los recursos quedan inutilizables y hace falta intervención externa. En <strong>distribuido</strong> se suma que no hay estado global observable, los mensajes pueden llegar desordenados (falsos deadlocks) y la detección/prevención debe hacerse por mensajes. Ver <a href="#deadlocks">§14</a>.</p>
+          <p>Dos o más procesos esperan por un recurso que el otro tiene → <strong>dependencia cíclica</strong>, ninguno progresa (ej.: P1 tiene el lock A y espera B; P2 tiene B y espera A). La parte afectada del sistema deja de progresar, los recursos quedan inutilizables y hace falta intervención externa. En <strong>distribuido</strong> se suma que no hay estado global observable, los mensajes pueden llegar desordenados (falsos deadlocks) y la detección/prevención debe hacerse por mensajes. Ver <a href="#deadlocks">§16</a>.</p>
         </details>
         <details>
           <summary>Mecanismos de prevención de deadlocks en distribuido (a detalle)</summary>
@@ -147,18 +147,18 @@ impl Handler<Reservar> for Producto {
             <li>Loop que revisa vencimientos en una lista y hace <code>sleep</code> aleatorio entre pasadas → <strong>NO</strong>.</li>
             <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait (spin apretado).</li>
           </ul>
-          <p>Ver la regla completa en <a href="#correccion">§8</a>.</p>
+          <p>Ver la regla completa en <a href="#correccion">§10</a>.</p>
         </details>
         <details>
           <summary>[Parcial] Identificar la estructura y sus errores (Mutex + Condvar)</summary>
           <p>Un <code>struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }</code> con <code>function_1</code> (si <code>amount &lt;= 0</code> hace <code>wait</code>, luego <code>-= 1</code>) y <code>function_2</code> (<code>+= 1</code> y <code>notify_all</code>) es un <strong>semáforo contador</strong> (implementado como monitor).</p>
-          <p><strong>Error:</strong> usa <code>if *amount &lt;= 0 { wait }</code> en vez de <code>while</code>. Ante un <strong>spurious wakeup</strong> o varios waiters despertados por <code>notify_all</code>, un proceso puede seguir con <code>amount == 0</code> y decrementar a negativo. <strong>Solución:</strong> cambiar el <code>if</code> por <code>while</code>. (Ver <a href="#semaforos">§10</a>.)</p>
+          <p><strong>Error:</strong> usa <code>if *amount &lt;= 0 { wait }</code> en vez de <code>while</code>. Ante un <strong>spurious wakeup</strong> o varios waiters despertados por <code>notify_all</code>, un proceso puede seguir con <code>amount == 0</code> y decrementar a negativo. <strong>Solución:</strong> cambiar el <code>if</code> por <code>while</code>. (Ver <a href="#semaforos">§12</a>.)</p>
         </details>
 
         <h3>Ej 2 — Modelos, fork-join y Redes de Petri</h3>
         <details>
           <summary>Red Ordinaria vs Red General de Petri</summary>
-          <p>Ambas son grafos dirigidos bipartitos. <strong>Ordinaria</strong>: <code>PN=(T,P,A)</code> (transiciones, lugares, arcos). <strong>General</strong>: agrega <code>W: A→N</code> (peso de cada arco) y <code>M0</code> (marca inicial): <code>PN=(T,P,A,W,M0)</code>. Regla de disparo general: <code>t</code> habilitada si <code>M(p) ≥ W(p,t)</code> para toda entrada; al disparar consume <code>W(p,t)</code> y produce <code>W(t,p')</code>. Ver <a href="#petri">§12</a>.</p>
+          <p>Ambas son grafos dirigidos bipartitos. <strong>Ordinaria</strong>: <code>PN=(T,P,A)</code> (transiciones, lugares, arcos). <strong>General</strong>: agrega <code>W: A→N</code> (peso de cada arco) y <code>M0</code> (marca inicial): <code>PN=(T,P,A,W,M0)</code>. Regla de disparo general: <code>t</code> habilitada si <code>M(p) ≥ W(p,t)</code> para toda entrada; al disparar consume <code>W(p,t)</code> y produce <code>W(t,p')</code>. Ver <a href="#petri">§14</a>.</p>
         </details>
         <details>
           <summary>¿Qué es el grafo de alcance? Dibujar un ejemplo</summary>
@@ -169,12 +169,12 @@ flowchart LR
     M0(("M0 = (1,0,0,0)")) -->|t1| M1(("M1 = (0,1,1,0)"))
     M1 -->|t4| M2(("M2 = (0,0,0,1)"))
             </div>
-            <figcaption>El diagrama grande de §12 muestra el caso con el «rombo» de concurrencia (dos transiciones independientes que conmutan).</figcaption>
+            <figcaption>El diagrama grande de §14 muestra el caso con el «rombo» de concurrencia (dos transiciones independientes que conmutan).</figcaption>
           </figure>
         </details>
         <details>
           <summary>Modelar productor-consumidor con buffer acotado (Petri)</summary>
-          <p>Dos lugares para el buffer: uno de <strong>ítems</strong> (empieza vacío; el consumidor requiere un token acá para consumir) y un <strong><code>notFull</code></strong> que empieza con <code>N</code> tokens (la capacidad; el productor requiere un token acá para depositar). Diagrama completo con notación <code>p1..p6/t1..t4</code> en <a href="#petri">§12</a>.</p>
+          <p>Dos lugares para el buffer: uno de <strong>ítems</strong> (empieza vacío; el consumidor requiere un token acá para consumir) y un <strong><code>notFull</code></strong> que empieza con <code>N</code> tokens (la capacidad; el productor requiere un token acá para depositar). Diagrama completo con notación <code>p1..p6/t1..t4</code> en <a href="#petri">§14</a>.</p>
         </details>
         <details>
           <summary>Fork-join, work stealing, y ¿por qué NO una única cola de tareas?</summary>
@@ -199,7 +199,7 @@ flowchart LR
         </details>
         <details>
           <summary>[Parcial] Modelar en Petri: productor-consumidor y lector-escritor</summary>
-          <p>Productor-consumidor con buffer acotado: resuelto en <a href="#petri">§12</a> (lugares <code>p5</code> ítems / <code>p6</code> huecos). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan <strong>arcos inhibidores</strong> que frenan a los lectores si hay un escritor esperando (ver <a href="#clasicos">§11</a> y <a href="#petri">§12</a>).</p>
+          <p>Productor-consumidor con buffer acotado: resuelto en <a href="#petri">§14</a> (lugares <code>p5</code> ítems / <code>p6</code> huecos). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan <strong>arcos inhibidores</strong> que frenan a los lectores si hay un escritor esperando (ver <a href="#clasicos">§13</a> y <a href="#petri">§14</a>).</p>
         </details>
 
         <h3>Ej 3 — Redes y sockets</h3>
@@ -220,7 +220,7 @@ flowchart LR
         </details>
         <details>
           <summary>¿Qué son los sockets y qué modelo de concurrencia implementan?</summary>
-          <p>Interfaz para comunicar dos procesos (misma o distinta máquina), base del modelo <strong>cliente-servidor</strong> (cliente activo inicia, servidor pasivo responde). Implementan <strong>pasaje de mensajes</strong>: cada extremo tiene su propio espacio de memoria y se sincroniza enviando/recibiendo por el stream; <strong>no hay memoria compartida</strong>. Ver <a href="#sockets">§16</a>.</p>
+          <p>Interfaz para comunicar dos procesos (misma o distinta máquina), base del modelo <strong>cliente-servidor</strong> (cliente activo inicia, servidor pasivo responde). Implementan <strong>pasaje de mensajes</strong>: cada extremo tiene su propio espacio de memoria y se sincroniza enviando/recibiendo por el stream; <strong>no hay memoria compartida</strong>. Ver <a href="#sockets">§18</a>.</p>
         </details>
         <details>
           <summary>¿Qué socket/servicio usarías para una app de streaming de películas?</summary>
@@ -246,11 +246,11 @@ flowchart LR
         <h3>Ej 4 — Ambientes distribuidos</h3>
         <details>
           <summary>Tipos de eventos en un ambiente distribuido</summary>
-          <p>La entidad es <strong>reactiva</strong> (solo responde a eventos externos): (1) <strong>llegada de un mensaje</strong> de otra entidad; (2) <strong>activación del reloj local</strong> (vencimiento de un temporizador propio); (3) <strong>impulso espontáneo</strong> (evento interno que la entidad genera sin estímulo externo, para iniciar actividad autónoma). Ver <a href="#ambientes">§17</a>.</p>
+          <p>La entidad es <strong>reactiva</strong> (solo responde a eventos externos): (1) <strong>llegada de un mensaje</strong> de otra entidad; (2) <strong>activación del reloj local</strong> (vencimiento de un temporizador propio); (3) <strong>impulso espontáneo</strong> (evento interno que la entidad genera sin estímulo externo, para iniciar actividad autónoma). Ver <a href="#ambientes">§19</a>.</p>
         </details>
         <details>
           <summary>Algoritmo Ring de elección de líder (paso a paso)</summary>
-          <p>Procesos ordenados lógicamente, cada uno conoce a su sucesor. Un proceso nota que el coordinador falló → arma <code>ELECTION</code> con su ID y lo manda al sucesor. Cada receptor <strong>agrega su ID</strong> y reenvía, hasta que el mensaje vuelve al iniciador. Éste lo cambia a <code>COORDINATOR</code>: el nuevo líder es el de <strong>mayor ID de la lista</strong>. Variante: propagar solo el ID más alto visto en vez de la lista completa. El <code>COORDINATOR</code> se saca de circulación al completar la vuelta. Diagrama en <a href="#exclusion">§15</a>.</p>
+          <p>Procesos ordenados lógicamente, cada uno conoce a su sucesor. Un proceso nota que el coordinador falló → arma <code>ELECTION</code> con su ID y lo manda al sucesor. Cada receptor <strong>agrega su ID</strong> y reenvía, hasta que el mensaje vuelve al iniciador. Éste lo cambia a <code>COORDINATOR</code>: el nuevo líder es el de <strong>mayor ID de la lista</strong>. Variante: propagar solo el ID más alto visto en vez de la lista completa. El <code>COORDINATOR</code> se saca de circulación al completar la vuelta. Diagrama en <a href="#exclusion">§17</a>.</p>
         </details>
         <details>
           <summary>Costo y complejidad: distribuido vs centralizado</summary>
@@ -258,7 +258,7 @@ flowchart LR
         </details>
         <details>
           <summary>¿Cómo está compuesto el estado interno de una entidad y cómo se modifica?</summary>
-          <p>El estado interno <code>σ(x,t)</code> es el <strong>contenido de los registros</strong> de <code>x</code> más el <strong>valor de su reloj</strong> <code>c_x</code> en el instante <code>t</code>. Se modifica <strong>solo por la ocurrencia de eventos</strong>, y es <strong>determinístico</strong>: si <code>x</code> recibe el mismo evento en dos ejecuciones y su estado interno es igual en ambas, el nuevo estado también será igual. Ver <a href="#ambientes">§17</a>.</p>
+          <p>El estado interno <code>σ(x,t)</code> es el <strong>contenido de los registros</strong> de <code>x</code> más el <strong>valor de su reloj</strong> <code>c_x</code> en el instante <code>t</code>. Se modifica <strong>solo por la ocurrencia de eventos</strong>, y es <strong>determinístico</strong>: si <code>x</code> recibe el mismo evento en dos ejecuciones y su estado interno es igual en ambas, el nuevo estado también será igual. Ver <a href="#ambientes">§19</a>.</p>
         </details>
 
         <h3>Ej 5 — Diseño de sistemas</h3>
@@ -334,7 +334,7 @@ impl Handler<AgregarVotos> for ContadorActor {
         </details>
         <details>
           <summary>[Parcial] Diseñar con actores: el restaurante de San Telmo</summary>
-          <p>Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de <a href="#mensajes">§7</a>. El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican <code>PlatoListo</code> a los mozos.</p>
+          <p>Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de <a href="#actores">§9</a>. El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican <code>PlatoListo</code> a los mozos.</p>
         </details>
         <details>
           <summary>[Parcial] Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio</summary>

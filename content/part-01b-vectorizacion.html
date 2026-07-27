@@ -1,0 +1,59 @@
+      <section class="chapter" id="vectorizacion" data-title="vectorizacion simd single instruction multiple data mmx sse avx neon carriles lanes vertical horizontal cuda gpu warp simt workgroup webgpu wgsl host device throughput latencia paralelismo de datos ley de moore alu divergencia granularidad">
+        <div class="chapter-head">
+          <div class="chapter-number">06</div>
+          <div><h2>Vectorización, SIMD y GPU</h2></div>
+        </div>
+
+        <p>La <strong>vectorización</strong> y las <strong>GPU</strong> son el caso extremo de paralelismo de datos: aplicar <em>el mismo cómputo simple</em> a un <strong>gran conjunto de datos independientes</strong> a la vez. Es lo indicado cuando el trabajo es masivo, uniforme y sin dependencias (sonido, imágenes, video, álgebra lineal, entrenar redes neuronales) — justo donde fork-join con <em>tasks</em> tendría demasiado overhead por dato.</p>
+
+        <div class="callout"><strong>¿Por qué existe?</strong> Al «detenerse» la <strong>Ley de Moore</strong> (la frecuencia dejó de crecer ~2004, §1), el aumento de transistores no se tradujo en más velocidad sino en <em>más ALUs</em> capaces de operar sobre los mismos registros a la vez. De ahí las instrucciones <strong>SIMD</strong> (<em>Single Instruction, Multiple Data</em>).</div>
+
+        <h3>SIMD: vectorización en la CPU</h3>
+        <ul class="study-list">
+          <li>Familias de instrucciones: <strong>MMX/SSE/AVX</strong> en x86, <strong>NEON</strong> en ARM.</li>
+          <li>Cada variable (registro) es un <strong>vector de tamaño fijo</strong> (128 a 512 bits) dividido en <strong>carriles (lanes)</strong> según el tamaño del dato (p. ej. un registro de 256 bits = 8 <code>float</code> de 32 bits).</li>
+          <li><strong>Operaciones «verticales»</strong>: entre distintos registros, mismo carril (<code>x0+y0</code>, <code>x1+y1</code>, …). Son las eficientes.</li>
+          <li><strong>Operaciones «horizontales»</strong>: reducen un vector a un escalar (<code>x0+x1+x2+x3</code>). Son más lentas.</li>
+          <li>En Rust: <code>std::simd</code> (portable, experimental) vs. <em>intrínsecos</em> 1:1 con la arquitectura (requieren <code>unsafe</code>, p. ej. NEON). Combinable con Rayon.</li>
+        </ul>
+
+        <h3>GPU: latencia vs throughput</h3>
+        <div class="cmp two">
+          <div class="callout"><strong>CPU</strong>: diseñada para <em>minimizar la latencia</em> de una tarea — cachés grandes, lógica compleja (pipeline, branch prediction), pocos hilos por núcleo (context switch caro).</div>
+          <div class="callout blue"><strong>GPU</strong>: diseñada para <em>maximizar el throughput</em> — más transistores en ALUs, miles de hilos; el tiempo de espera de la RAM «se esconde» corriendo otro hilo, con context switch baratísimo (hasta uno por ciclo).</div>
+        </div>
+        <p>La frase del docente: «la solución de la GPU a que la memoria sea lenta es <em>ponerse a hacer otra cosa</em>».</p>
+
+        <h3>SIMT y jerarquía de threads (CUDA)</h3>
+        <ul class="study-list">
+          <li><strong>CUDA</strong> (NVIDIA) es el estándar de facto para GPU. Modela «threads» en una jerarquía: el programa se divide en un <strong>grid de bloques</strong> independientes, cada bloque con N threads, direccionables en 1D/2D/3D (miles de threads concurrentes).</li>
+          <li><strong>SIMT</strong> (<em>Single Instruction, Multiple Threads</em>): la ejecución se agenda en <strong>warps de 32 hilos</strong> que comparten un único program counter (todos ejecutan la misma instrucción, cada uno en su lane).</li>
+          <li><strong>Divergencia:</strong> ante un salto condicional, el warp ejecuta <em>las dos ramas</em> aplicando una máscara de hilos → se pierde eficiencia. La máxima performance se logra cuando todos los hilos del warp <strong>convergen</strong> y cuando la cantidad de threads por bloque es <strong>múltiplo de 32</strong>.</li>
+        </ul>
+
+        <h3>Flujo host↔device</h3>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    A["1. Reservar memoria host y device"] --> B["2. Inicializar datos en el host"]
+    B --> C["3. Copiar host a device"]
+    C --> D["4. Ejecutar kernels en la GPU y esperar"]
+    D --> E["5. Copiar device a host: resultados"]
+          </div>
+          <figcaption>El patrón típico de un programa GPU. <strong>La copia host↔device suele dominar el tiempo</strong> (en un filtro blanco y negro el cómputo fue ~11 ms y las copias, bastante más). Regla: minimizar copias, «vivir en la GPU».</figcaption>
+        </figure>
+
+        <h3>WebGPU / WGSL</h3>
+        <p>La cátedra también programa GPU con <strong>WebGPU</strong> (crate <code>wgpu</code>, corre sobre Vulkan/Metal en cualquier placa moderna) y su shader language <strong>WGSL</strong> (parecido a Rust). Nomenclatura equivalente: un <strong>workgroup</strong> ≈ un <em>warp</em> (CUDA) ≈ un <em>SIMD group</em> (Metal), óptimo si es múltiplo de 32.</p>
+
+        <details>
+          <summary>Matices de clase (para no perder puntos)</summary>
+          <ul class="study-list">
+            <li><strong>La granularidad importa muchísimo:</strong> 1 tarea por píxel (28M tareas) corre <em>peor</em> que en serie por el overhead; 1 por fila (~4320) fue 10× más rápido. Demasiadas unidades matan la ganancia.</li>
+            <li><strong>Cuándo NO usar vectorización</strong> (trampa de parcial): sirve para el <em>mismo</em> cómputo sobre datos <em>independientes</em>. Una «votación en vivo» es agregación con mucha escritura a contadores compartidos → estado compartido/atómicos o actores, no SIMD.</li>
+            <li><strong>vs. fork-join:</strong> lanzar una task tiene costo (memoria, scheduling); para operaciones triviales sobre millones de datos, SIMD/GPU gana porque no crea tasks.</li>
+          </ul>
+        </details>
+
+        <p class="exam-answer"><strong>En el final/parcial:</strong> vectorización/SIMD/GPU = «mismo cómputo, muchos datos independientes». Saber SIMD (lanes, verticales vs horizontales), SIMT/warps de 32 y la divergencia, el flujo host-device (la copia domina) y por qué la CPU optimiza <em>latencia</em> y la GPU <em>throughput</em>. Elegir este modelo solo si el trabajo es masivo, uniforme y sin dependencias.</p>
+      </section>

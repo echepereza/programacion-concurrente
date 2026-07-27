@@ -491,12 +491,12 @@ let total: u64 = (0..1_000_000u64)
 
 Dos utilidades más que usa la cátedra: `par_bridge()` convierte cualquier iterador secuencial en paralelo (cuando no hay un `par_iter` directo), y `std::thread::available_parallelism()` devuelve cuántos hilos paralelos ofrece el hardware, para dimensionar el pool. El «Hello World» práctico de fork-join es el **Merge Sort concurrente**: partir el vector, ordenar cada mitad en paralelo y mergear.
 
-### MapReduce, Dremel y vectorización
+### MapReduce y Dremel
 
 - **MapReduce** (Google, 2004): modelo para procesar grandes datasets. El usuario define **map** (procesa un par clave/valor y emite pares intermedios) y **reduce** (combina todos los valores de una misma clave). Su «Hello World» es el **conteo de palabras (Word Count)**.
 - **Dremel**: consultas en tiempo casi real (expuesto como *BigQuery*); la consulta se «empuja» y reescribe por un árbol jerárquico y los resultados se ensamblan agregando las respuestas de los niveles inferiores.
-- **Vectorización (SIMD, *Single Instruction, Multiple Data*)**: aplicar el mismo cómputo simple a muchos datos independientes a la vez. Ante la ralentización de la **Ley de Moore**, los transistores extra se usaron en varias ALUs sobre los mismos registros → instrucciones SIMD (MMX/SSE/AVX en x86, NEON en ARM). Los registros son vectores de tamaño fijo (128–512 bits) divididos en **carriles (lanes)**. Operaciones «verticales» (entre registros, mismo carril: `x0+y0`) son eficientes; las «horizontales» (reducir un vector a un escalar: `x0+x1+x2+x3`) son más lentas. Ideal para sonido, imágenes, video y entrenar redes neuronales.
-- **CUDA**: estándar de facto de NVIDIA para GPUs; modela «threads» en bloques que operan sobre porciones de memoria independientes (direccionables en 1D/2D/3D), permitiendo miles de threads concurrentes. En GPU la ejecución se agenda en **warps** de 32 hilos (SIMT): todos ejecutan la misma instrucción, y un salto condicional divergente obliga a serializar las dos ramas.
+
+La **vectorización (SIMD)** y las **GPU (CUDA/WebGPU)** también son paralelismo de datos, pero por su peso en la materia (más de una clase) tienen capítulo propio: ver [§6 Vectorización, SIMD y GPU](#vectorizacion).
 
 ```mermaid
 flowchart LR
@@ -523,13 +523,97 @@ flowchart LR
 - **Granularidad de las tareas:** demasiado finas (1 tarea por píxel) corren *peor* que en serie por overhead de crear/context-switch; demasiado gruesas dejan CPUs ociosas si son dispares. Óptimo: *shards* de tamaño uniforme. (1 por fila fue 10× más rápido que 1 por píxel.)
 - **API real:** `rayon::join(a, b)` corre dos closures en paralelo y devuelve `(retA, retB)`; `std::thread::scope` existe en la std desde 1.63; `crossbeam::scope` devuelve `Err` si algún thread paniqueó. **Nunca `unwrap`** en `JoinHandle::join`: manejá el panic (loggear y seguir).
 - **`reduce` con fábrica:** el valor inicial va como *closure*, no como valor, porque cada reducción concurrente necesita *su propio* acumulador (un solo `HashMap` sería escritura concurrente).
-- **GPU vs CPU:** la CPU minimiza *latencia* (cachés, branch prediction, pocos hilos); la GPU maximiza *throughput* (misma instrucción sobre millones de datos, esconde la RAM lenta corriendo otro hilo). La copia host↔device suele *dominar* el tiempo → «viví en la GPU». La cátedra programa GPU con **WebGPU/WGSL** (no solo CUDA); un *workgroup* ≈ warp ≈ SIMD group, óptimo si es múltiplo de 32.
 
 **En el final:** propiedades de fork-join (determinístico, sin races, aislado), qué es work stealing (deque, robar del inicio de otra cola) y por qué SIMD/GPU sirven para «mismo cómputo sobre muchos datos independientes» y no para lógica con estado compartido.
 
+<a id="vectorizacion"></a>
+
+## 06. Vectorización, SIMD y GPU
+
+La **vectorización** y las **GPU** son el caso extremo de paralelismo de datos: aplicar *el mismo cómputo simple* a un **gran conjunto de datos independientes** a la vez. Es lo indicado cuando el trabajo es masivo, uniforme y sin dependencias (sonido, imágenes, video, álgebra lineal, entrenar redes neuronales) — justo donde fork-join con *tasks* tendría demasiado overhead por dato.
+
+¿Por qué existe?
+
+Al «detenerse» la
+
+Ley de Moore
+
+(la frecuencia dejó de crecer ~2004, §1), el aumento de transistores no se tradujo en más velocidad sino en
+
+más ALUs
+
+capaces de operar sobre los mismos registros a la vez. De ahí las instrucciones
+
+SIMD
+
+(
+
+Single Instruction, Multiple Data
+
+).
+
+### SIMD: vectorización en la CPU
+
+- Familias de instrucciones: **MMX/SSE/AVX** en x86, **NEON** en ARM.
+- Cada variable (registro) es un **vector de tamaño fijo** (128 a 512 bits) dividido en **carriles (lanes)** según el tamaño del dato (p. ej. un registro de 256 bits = 8 `float` de 32 bits).
+- **Operaciones «verticales»**: entre distintos registros, mismo carril (`x0+y0`, `x1+y1`, …). Son las eficientes.
+- **Operaciones «horizontales»**: reducen un vector a un escalar (`x0+x1+x2+x3`). Son más lentas.
+- En Rust: `std::simd` (portable, experimental) vs. *intrínsecos* 1:1 con la arquitectura (requieren `unsafe`, p. ej. NEON). Combinable con Rayon.
+
+### GPU: latencia vs throughput
+
+CPU
+
+: diseñada para
+
+minimizar la latencia
+
+de una tarea — cachés grandes, lógica compleja (pipeline, branch prediction), pocos hilos por núcleo (context switch caro).
+
+GPU
+
+: diseñada para
+
+maximizar el throughput
+
+— más transistores en ALUs, miles de hilos; el tiempo de espera de la RAM «se esconde» corriendo otro hilo, con context switch baratísimo (hasta uno por ciclo).
+
+La frase del docente: «la solución de la GPU a que la memoria sea lenta es *ponerse a hacer otra cosa*».
+
+### SIMT y jerarquía de threads (CUDA)
+
+- **CUDA** (NVIDIA) es el estándar de facto para GPU. Modela «threads» en una jerarquía: el programa se divide en un **grid de bloques** independientes, cada bloque con N threads, direccionables en 1D/2D/3D (miles de threads concurrentes).
+- **SIMT** (*Single Instruction, Multiple Threads*): la ejecución se agenda en **warps de 32 hilos** que comparten un único program counter (todos ejecutan la misma instrucción, cada uno en su lane).
+- **Divergencia:** ante un salto condicional, el warp ejecuta *las dos ramas* aplicando una máscara de hilos → se pierde eficiencia. La máxima performance se logra cuando todos los hilos del warp **convergen** y cuando la cantidad de threads por bloque es **múltiplo de 32**.
+
+### Flujo host↔device
+
+```mermaid
+flowchart LR
+    A["1. Reservar memoria host y device"] --> B["2. Inicializar datos en el host"]
+    B --> C["3. Copiar host a device"]
+    C --> D["4. Ejecutar kernels en la GPU y esperar"]
+    D --> E["5. Copiar device a host: resultados"]
+          
+```
+
+*El patrón típico de un programa GPU. La copia host↔device suele dominar el tiempo (en un filtro blanco y negro el cómputo fue ~11 ms y las copias, bastante más). Regla: minimizar copias, «vivir en la GPU».*
+
+### WebGPU / WGSL
+
+La cátedra también programa GPU con **WebGPU** (crate `wgpu`, corre sobre Vulkan/Metal en cualquier placa moderna) y su shader language **WGSL** (parecido a Rust). Nomenclatura equivalente: un **workgroup** ≈ un *warp* (CUDA) ≈ un *SIMD group* (Metal), óptimo si es múltiplo de 32.
+
+**Matices de clase (para no perder puntos)**
+
+- **La granularidad importa muchísimo:** 1 tarea por píxel (28M tareas) corre *peor* que en serie por el overhead; 1 por fila (~4320) fue 10× más rápido. Demasiadas unidades matan la ganancia.
+- **Cuándo NO usar vectorización** (trampa de parcial): sirve para el *mismo* cómputo sobre datos *independientes*. Una «votación en vivo» es agregación con mucha escritura a contadores compartidos → estado compartido/atómicos o actores, no SIMD.
+- **vs. fork-join:** lanzar una task tiene costo (memoria, scheduling); para operaciones triviales sobre millones de datos, SIMD/GPU gana porque no crea tasks.
+
+**En el final/parcial:** vectorización/SIMD/GPU = «mismo cómputo, muchos datos independientes». Saber SIMD (lanes, verticales vs horizontales), SIMT/warps de 32 y la divergencia, el flujo host-device (la copia domina) y por qué la CPU optimiza *latencia* y la GPU *throughput*. Elegir este modelo solo si el trabajo es masivo, uniforme y sin dependencias.
+
 <a id="async"></a>
 
-## 06. Programación asincrónica (async/await)
+## 07. Programación asincrónica (async/await)
 
 Las **tareas asincrónicas** permiten manejar concurrencia de forma mucho más liviana que los threads, sobre todo para **operaciones de E/S**. **El problema de los threads:** si una app crea muchísimos threads, la memoria de sus *stacks* (p. ej. ~100 KB c/u) se vuelve un problema. Las tareas async son mucho más livianas (miles o decenas de miles), más rápidas de crear y con menor overhead de memoria; un hilo puede tomar otras tareas mientras una espera que se complete una llamada al sistema.
 
@@ -675,7 +759,7 @@ Dato fino: los futures son **functors** (se pueden `map`) y **monads** (se puede
 
 <a id="mensajes"></a>
 
-## 07. Mensajes, canales y modelo de actores
+## 08. Mensajes y canales
 
 Principio fundamental:
 
@@ -720,7 +804,13 @@ for msg in rx {                        // el consumidor itera hasta que se cierr
 - **Colas de mensajes:** orientadas a *mensajes* como unidades independientes.
 - **RPC (Remote Procedure Call):** un cliente ejecuta funciones en un servidor de otro procesador. Requiere **stubs** en ambos extremos, **localización** del servicio y **parameter marshalling** (serializar argumentos/resultados).
 
-### Modelo de actores
+**En el final:** propiedades de los canales (tipados, unidireccionales, MPSC, transfieren ownership, selective input), la comunicación sincrónica (rendezvous) vs asincrónica (buffer), los tipos de direccionamiento, y los canales de Unix (pipes/FIFOs orientados a bytes, colas de mensajes) vs RPC (stubs + marshalling). El modelo de actores está en [§9](#actores).
+
+<a id="actores"></a>
+
+## 09. Modelo de actores
+
+**El modelo de actores** es uno de los cinco modelos de concurrencia ([§4](#modelos)) y una forma de [pasaje de mensajes](#mensajes) (§8): entidades aisladas con estado privado que se comunican *solo* por mensajes asincrónicos. Es el modelo estrella para **diseñar sistemas** en el final.
 
 Desarrollado por **Carl Hewitt (1973)** y popularizado por **Erlang**. La primitiva es el **actor**: liviano (se crean miles, a diferencia de los threads), **encapsula estado y comportamiento**.
 
@@ -825,7 +915,7 @@ Los finales piden diseñar sistemas con actores definiendo, por cada entidad, su
 
 <a id="correccion"></a>
 
-## 08. Corrección: safety y liveness
+## 10. Corrección: safety y liveness
 
 La corrección de un programa concurrente es difícil porque la salida puede depender del **escenario** de ejecución, no solo de la entrada. Se demuestra probando dos clases de propiedades:
 
@@ -950,7 +1040,7 @@ loop {
 
 <a id="locks"></a>
 
-## 09. Locks y RwLock
+## 11. Locks y RwLock
 
 Los **locks (cerraduras)** implementan exclusión mutua entre procesos. Se usan con una variable de tipo lock que guarda su estado:
 
@@ -1034,7 +1124,7 @@ Err
 
 <a id="semaforos"></a>
 
-## 10. Semáforos, barreras y monitores
+## 12. Semáforos, barreras y monitores
 
 Son mecanismos de sincronización de más alto nivel para coordinar el acceso a recursos compartidos. Sirven para **evitar el busy-wait**, las condiciones de carrera y para garantizar comportamiento determinista.
 
@@ -1150,7 +1240,7 @@ impl Semaforo {
 
 <a id="clasicos"></a>
 
-## 11. Problemas clásicos de sincronización
+## 13. Problemas clásicos de sincronización
 
 ### Productor–Consumidor
 
@@ -1204,7 +1294,7 @@ flowchart LR
 
 #### Solución distribuida de Chandy-Misra
 
-Versión por **pasaje de mensajes** (sin memoria compartida), **libre de deadlock**, que se implementa naturalmente con [actores](#mensajes). Reglas:
+Versión por **pasaje de mensajes** (sin memoria compartida), **libre de deadlock**, que se implementa naturalmente con [actores](#actores). Reglas:
 
 - Por cada par de filósofos que compiten por un palito se crea **un palito**, asignado al inicio al filósofo de **ID más bajo** (rompe la simetría → evita la espera circular).
 - Cada palito está **sucio** o **limpio**; inicialmente todos están sucios.
@@ -1258,7 +1348,7 @@ write()
 
 <a id="petri"></a>
 
-## 12. Redes de Petri
+## 14. Redes de Petri
 
 Las **Redes de Petri** son una herramienta **gráfica y matemática** para modelar y analizar sistemas concurrentes o distribuidos. Permiten razonar formalmente sobre estados alcanzables, exclusión mutua y deadlocks.
 
@@ -1477,7 +1567,7 @@ M0=(3,0)
 
 <a id="transacciones"></a>
 
-## 13. Transacciones distribuidas y ACID
+## 15. Transacciones distribuidas y ACID
 
 Un sistema de **transacciones** se compone de procesos independientes que pueden fallar aleatoriamente. Los errores de comunicación los maneja de forma transparente la capa de red, y se asume **almacenamiento estable** (discos con probabilidad muy baja de perder datos). Primitivas: `BEGIN`, `END` (intenta commit), `ABORT` (rollback a los valores previos), `READ`, `WRITE`.
 
@@ -1580,7 +1670,7 @@ gana (sin overhead de locks, más paralelismo).
 
 <a id="deadlocks"></a>
 
-## 14. Deadlocks distribuidos
+## 16. Deadlocks distribuidos
 
 Un **deadlock** es una situación en la que dos o más acciones se esperan mutuamente para terminar, y por eso ninguna avanza. En un sistema distribuido no hay un estado global observable de un vistazo, así que detectarlo y prevenirlo es más difícil.
 
@@ -1628,7 +1718,7 @@ dirección del orden temporal. La diferencia es a quién se aborta: en Wait-Die 
 
 <a id="exclusion"></a>
 
-## 15. Exclusión mutua distribuida y elección de líder
+## 17. Exclusión mutua distribuida y elección de líder
 
 ### Exclusión mutua distribuida
 
@@ -1687,7 +1777,7 @@ flowchart LR
 
 <a id="sockets"></a>
 
-## 16. Sockets y modelo cliente-servidor
+## 18. Sockets y modelo cliente-servidor
 
 Un **socket** es una interfaz que permite la comunicación entre dos procesos, en la misma máquina o en máquinas distintas. Es la base del **modelo cliente-servidor**: el **cliente** es el proceso *activo* que inicia la interacción; el **servidor** es el *pasivo* que espera y responde.
 
@@ -1769,7 +1859,7 @@ fn cliente() -> std::io::Result<()> {
 
 <a id="ambientes"></a>
 
-## 17. Ambientes distribuidos
+## 19. Ambientes distribuidos
 
 Un **ambiente distribuido** es un sistema donde múltiples unidades de cómputo trabajan juntas, están **separadas espacialmente** y se comunican **a través de mensajes**. Es un modelo formal para razonar sobre algoritmos distribuidos.
 
@@ -1897,7 +1987,7 @@ d
 
 <a id="redes"></a>
 
-## 18. Redes y modelo OSI (repaso)
+## 20. Redes y modelo OSI (repaso)
 
 Para entender la comunicación distribuida conviene repasar el **modelo de capas**: una separación en niveles (física, enlace, red, transporte, sesión, presentación, aplicación) que abstrae las funciones de comunicación y favorece la **modularidad** y la **portabilidad**.
 
@@ -1916,7 +2006,7 @@ Para entender la comunicación distribuida conviene repasar el **modelo de capas
 
 <a id="testing"></a>
 
-## 19. Testing de programas concurrentes
+## 21. Testing de programas concurrentes
 
 Probar código concurrente es difícil porque los bugs (races, deadlocks) dependen del *interleaving* y no aparecen en todas las corridas: un test puede pasar mil veces y fallar la vez 1001. La materia cierra con herramientas pensadas justamente para eso.
 
@@ -2019,19 +2109,19 @@ la elección para el caso concreto (¿CPU o I/O?, ¿alta o baja contención?, ¿
 
 ### Final 16/07/2026 — resuelto
 
-1. **Redes de Petri:** Red Ordinaria vs General, `I(t)`/`O(t)`, y modelar la reserva de 3 asientos. → Resuelto completo en [§12 Redes de Petri](#petri) (lugares `Libres`/`Ocupados`, invariante `Libres+Ocupados=3`, secuencia de disparos).
-2. **Monitores:** implementación, métodos y comparación con semáforos. → [§10](#semaforos): variables de condición (FIFO, sin valor), `waitC` siempre bloquea y libera el monitor, `signalC` no hace nada si la cola está vacía; tabla semáforo vs monitor.
-3. **Transacciones:** 2PC (ventajas/desventajas) y cuándo usar concurrencia optimista. → [§13](#transacciones): 2PC atómico pero bloqueante y con SPOF; optimista conviene con *baja contención* y mayoría de lecturas.
-4. **Ambientes distribuidos:** Acción/Regla/Comportamiento y Conocimiento. → [§17](#ambientes).
+1. **Redes de Petri:** Red Ordinaria vs General, `I(t)`/`O(t)`, y modelar la reserva de 3 asientos. → Resuelto completo en [§14 Redes de Petri](#petri) (lugares `Libres`/`Ocupados`, invariante `Libres+Ocupados=3`, secuencia de disparos).
+2. **Monitores:** implementación, métodos y comparación con semáforos. → [§12](#semaforos): variables de condición (FIFO, sin valor), `waitC` siempre bloquea y libera el monitor, `signalC` no hace nada si la cola está vacía; tabla semáforo vs monitor.
+3. **Transacciones:** 2PC (ventajas/desventajas) y cuándo usar concurrencia optimista. → [§15](#transacciones): 2PC atómico pero bloqueante y con SPOF; optimista conviene con *baja contención* y mayoría de lecturas.
+4. **Ambientes distribuidos:** Acción/Regla/Comportamiento y Conocimiento. → [§19](#ambientes).
 5. **Diseño de un sistema (venta online):** resuelto abajo.
 
 ### Final 09/07/2026 — resuelto
 
-1. **Comparar** busy-wait, deadlock, race condition y starvation. → [§8](#correccion) (tabla de los cuatro).
-2. **Modelo de actores:** motivación, características y ciclo de vida en Actix. → [§7](#mensajes).
-3. **Deadlocks distribuidos** + gráfico. → [§14](#deadlocks) (detección centralizada/probe, prevención wait-die/wound-wait).
-4. **Entidad** en un ambiente distribuido y sus capacidades. → [§17](#ambientes).
-5. **Compra-venta de tickets en hora pico** (prevenir compras duplicadas, mucha lectura y escritura): explicar 2PL, timestamps y optimista y elegir. → [§13](#transacciones): con alta contención de escritura conviene **pesimista (2PL / timestamps)** para evitar la sobreventa; optimista solo para la parte de lectura.
+1. **Comparar** busy-wait, deadlock, race condition y starvation. → [§10](#correccion) (tabla de los cuatro).
+2. **Modelo de actores:** motivación, características y ciclo de vida en Actix. → [§9](#actores).
+3. **Deadlocks distribuidos** + gráfico. → [§16](#deadlocks) (detección centralizada/probe, prevención wait-die/wound-wait).
+4. **Entidad** en un ambiente distribuido y sus capacidades. → [§19](#ambientes).
+5. **Compra-venta de tickets en hora pico** (prevenir compras duplicadas, mucha lectura y escritura): explicar 2PL, timestamps y optimista y elegir. → [§15](#transacciones): con alta contención de escritura conviene **pesimista (2PL / timestamps)** para evitar la sobreventa; optimista solo para la parte de lectura.
 
 ### Diseño de un sistema — Venta online con reserva de stock
 
@@ -2119,11 +2209,11 @@ Este diseño combina tres temas del programa:
 
 actores
 
-(§7, aislamiento sin locks),
+(§9, aislamiento sin locks),
 
 transaccionalidad
 
-(§13, reserva + rollback) y el
+(§15, reserva + rollback) y el
 
 invariante de capacidad
 
@@ -2131,7 +2221,7 @@ de las
 
 Redes de Petri
 
-(§12,
+(§14,
 
 reservado ≤ stock
 
@@ -2147,15 +2237,15 @@ Todo el banco de práctica **agrupado como caen los ejercicios en el examen (Ej 
 
 **Definir el problema de la sección crítica: programa modelo y especificaciones de corrección**
 
-El **programa modelo** es el esquema abstracto de cada proceso: un **ciclo infinito** cuyo código se divide en *parte crítica* (accede a recursos compartidos) y *parte no-crítica*. La **sección crítica** debe progresar y finalizar eventualmente. Especificaciones: **exclusión mutua** (sus instrucciones no se intercalan), **ausencia de deadlock** (si dos intentan entrar, al menos uno lo logra) y **ausencia de starvation** (si un proceso intenta entrar, eventualmente entra). Ver [§8](#correccion).
+El **programa modelo** es el esquema abstracto de cada proceso: un **ciclo infinito** cuyo código se divide en *parte crítica* (accede a recursos compartidos) y *parte no-crítica*. La **sección crítica** debe progresar y finalizar eventualmente. Especificaciones: **exclusión mutua** (sus instrucciones no se intercalan), **ausencia de deadlock** (si dos intentan entrar, al menos uno lo logra) y **ausencia de starvation** (si un proceso intenta entrar, eventualmente entra). Ver [§10](#correccion).
 
 **¿Cuál es la importancia de los criterios de corrección?**
 
-En concurrencia la **salida depende del escenario** de ejecución, no solo de la entrada, así que no alcanza con debuggear (a diferencia del código secuencial, determinístico). Por eso se prueban dos clases de propiedades: **Safety** (verdadera *siempre*: exclusión mutua, ausencia de deadlock) y **Liveness** (verdadera *eventualmente*: ausencia de starvation, fairness). Ver [§8](#correccion).
+En concurrencia la **salida depende del escenario** de ejecución, no solo de la entrada, así que no alcanza con debuggear (a diferencia del código secuencial, determinístico). Por eso se prueban dos clases de propiedades: **Safety** (verdadera *siempre*: exclusión mutua, ausencia de deadlock) y **Liveness** (verdadera *eventualmente*: ausencia de starvation, fairness). Ver [§10](#correccion).
 
 **¿Qué es un deadlock y qué consecuencias tiene? ¿Y en distribuido?**
 
-Dos o más procesos esperan por un recurso que el otro tiene → **dependencia cíclica**, ninguno progresa (ej.: P1 tiene el lock A y espera B; P2 tiene B y espera A). La parte afectada del sistema deja de progresar, los recursos quedan inutilizables y hace falta intervención externa. En **distribuido** se suma que no hay estado global observable, los mensajes pueden llegar desordenados (falsos deadlocks) y la detección/prevención debe hacerse por mensajes. Ver [§14](#deadlocks).
+Dos o más procesos esperan por un recurso que el otro tiene → **dependencia cíclica**, ninguno progresa (ej.: P1 tiene el lock A y espera B; P2 tiene B y espera A). La parte afectada del sistema deja de progresar, los recursos quedan inutilizables y hace falta intervención externa. En **distribuido** se suma que no hay estado global observable, los mensajes pueden llegar desordenados (falsos deadlocks) y la detección/prevención debe hacerse por mensajes. Ver [§16](#deadlocks).
 
 **Mecanismos de prevención de deadlocks en distribuido (a detalle)**
 
@@ -2174,19 +2264,19 @@ Con un **timestamp único y global** por transacción al iniciar. Al bloquearse 
 - Loop que revisa vencimientos en una lista y hace `sleep` aleatorio entre pasadas → **NO**.
 - `loop { if *flag.lock() { break } }` sin sleep → **SÍ**, busy-wait (spin apretado).
 
-Ver la regla completa en [§8](#correccion).
+Ver la regla completa en [§10](#correccion).
 
 **[Parcial] Identificar la estructura y sus errores (Mutex + Condvar)**
 
 Un `struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }` con `function_1` (si `amount &lt;= 0` hace `wait`, luego `-= 1`) y `function_2` (`+= 1` y `notify_all`) es un **semáforo contador** (implementado como monitor).
 
-**Error:** usa `if *amount &lt;= 0 { wait }` en vez de `while`. Ante un **spurious wakeup** o varios waiters despertados por `notify_all`, un proceso puede seguir con `amount == 0` y decrementar a negativo. **Solución:** cambiar el `if` por `while`. (Ver [§10](#semaforos).)
+**Error:** usa `if *amount &lt;= 0 { wait }` en vez de `while`. Ante un **spurious wakeup** o varios waiters despertados por `notify_all`, un proceso puede seguir con `amount == 0` y decrementar a negativo. **Solución:** cambiar el `if` por `while`. (Ver [§12](#semaforos).)
 
 ### Ej 2 — Modelos, fork-join y Redes de Petri
 
 **Red Ordinaria vs Red General de Petri**
 
-Ambas son grafos dirigidos bipartitos. **Ordinaria**: `PN=(T,P,A)` (transiciones, lugares, arcos). **General**: agrega `W: A→N` (peso de cada arco) y `M0` (marca inicial): `PN=(T,P,A,W,M0)`. Regla de disparo general: `t` habilitada si `M(p) ≥ W(p,t)` para toda entrada; al disparar consume `W(p,t)` y produce `W(t,p')`. Ver [§12](#petri).
+Ambas son grafos dirigidos bipartitos. **Ordinaria**: `PN=(T,P,A)` (transiciones, lugares, arcos). **General**: agrega `W: A→N` (peso de cada arco) y `M0` (marca inicial): `PN=(T,P,A,W,M0)`. Regla de disparo general: `t` habilitada si `M(p) ≥ W(p,t)` para toda entrada; al disparar consume `W(p,t)` y produce `W(t,p')`. Ver [§14](#petri).
 
 **¿Qué es el grafo de alcance? Dibujar un ejemplo**
 
@@ -2199,11 +2289,11 @@ flowchart LR
             
 ```
 
-*El diagrama grande de §12 muestra el caso con el «rombo» de concurrencia (dos transiciones independientes que conmutan).*
+*El diagrama grande de §14 muestra el caso con el «rombo» de concurrencia (dos transiciones independientes que conmutan).*
 
 **Modelar productor-consumidor con buffer acotado (Petri)**
 
-Dos lugares para el buffer: uno de **ítems** (empieza vacío; el consumidor requiere un token acá para consumir) y un **`notFull`** que empieza con `N` tokens (la capacidad; el productor requiere un token acá para depositar). Diagrama completo con notación `p1..p6/t1..t4` en [§12](#petri).
+Dos lugares para el buffer: uno de **ítems** (empieza vacío; el consumidor requiere un token acá para consumir) y un **`notFull`** que empieza con `N` tokens (la capacidad; el productor requiere un token acá para depositar). Diagrama completo con notación `p1..p6/t1..t4` en [§14](#petri).
 
 **Fork-join, work stealing, y ¿por qué NO una única cola de tareas?**
 
@@ -2226,7 +2316,7 @@ Resuelto en la tabla de [§4](#modelos): matrices→SIMD/GPU; varias APIs→asyn
 
 **[Parcial] Modelar en Petri: productor-consumidor y lector-escritor**
 
-Productor-consumidor con buffer acotado: resuelto en [§12](#petri) (lugares `p5` ítems / `p6` huecos). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan **arcos inhibidores** que frenan a los lectores si hay un escritor esperando (ver [§11](#clasicos) y [§12](#petri)).
+Productor-consumidor con buffer acotado: resuelto en [§14](#petri) (lugares `p5` ítems / `p6` huecos). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan **arcos inhibidores** que frenan a los lectores si hay un escritor esperando (ver [§13](#clasicos) y [§14](#petri)).
 
 ### Ej 3 — Redes y sockets
 
@@ -2244,7 +2334,7 @@ Productor-consumidor con buffer acotado: resuelto en [§12](#petri) (lugares `p5
 
 **¿Qué son los sockets y qué modelo de concurrencia implementan?**
 
-Interfaz para comunicar dos procesos (misma o distinta máquina), base del modelo **cliente-servidor** (cliente activo inicia, servidor pasivo responde). Implementan **pasaje de mensajes**: cada extremo tiene su propio espacio de memoria y se sincroniza enviando/recibiendo por el stream; **no hay memoria compartida**. Ver [§16](#sockets).
+Interfaz para comunicar dos procesos (misma o distinta máquina), base del modelo **cliente-servidor** (cliente activo inicia, servidor pasivo responde). Implementan **pasaje de mensajes**: cada extremo tiene su propio espacio de memoria y se sincroniza enviando/recibiendo por el stream; **no hay memoria compartida**. Ver [§18](#sockets).
 
 **¿Qué socket/servicio usarías para una app de streaming de películas?**
 
@@ -2268,11 +2358,11 @@ Ambos pueden ser sincrónicos o asincrónicos.
 
 **Tipos de eventos en un ambiente distribuido**
 
-La entidad es **reactiva** (solo responde a eventos externos): (1) **llegada de un mensaje** de otra entidad; (2) **activación del reloj local** (vencimiento de un temporizador propio); (3) **impulso espontáneo** (evento interno que la entidad genera sin estímulo externo, para iniciar actividad autónoma). Ver [§17](#ambientes).
+La entidad es **reactiva** (solo responde a eventos externos): (1) **llegada de un mensaje** de otra entidad; (2) **activación del reloj local** (vencimiento de un temporizador propio); (3) **impulso espontáneo** (evento interno que la entidad genera sin estímulo externo, para iniciar actividad autónoma). Ver [§19](#ambientes).
 
 **Algoritmo Ring de elección de líder (paso a paso)**
 
-Procesos ordenados lógicamente, cada uno conoce a su sucesor. Un proceso nota que el coordinador falló → arma `ELECTION` con su ID y lo manda al sucesor. Cada receptor **agrega su ID** y reenvía, hasta que el mensaje vuelve al iniciador. Éste lo cambia a `COORDINATOR`: el nuevo líder es el de **mayor ID de la lista**. Variante: propagar solo el ID más alto visto en vez de la lista completa. El `COORDINATOR` se saca de circulación al completar la vuelta. Diagrama en [§15](#exclusion).
+Procesos ordenados lógicamente, cada uno conoce a su sucesor. Un proceso nota que el coordinador falló → arma `ELECTION` con su ID y lo manda al sucesor. Cada receptor **agrega su ID** y reenvía, hasta que el mensaje vuelve al iniciador. Éste lo cambia a `COORDINATOR`: el nuevo líder es el de **mayor ID de la lista**. Variante: propagar solo el ID más alto visto en vez de la lista completa. El `COORDINATOR` se saca de circulación al completar la vuelta. Diagrama en [§17](#exclusion).
 
 **Costo y complejidad: distribuido vs centralizado**
 
@@ -2280,7 +2370,7 @@ En **distribuido** se mide por: **cantidad de mensajes** `M` (transmisiones), la
 
 **¿Cómo está compuesto el estado interno de una entidad y cómo se modifica?**
 
-El estado interno `σ(x,t)` es el **contenido de los registros** de `x` más el **valor de su reloj** `c_x` en el instante `t`. Se modifica **solo por la ocurrencia de eventos**, y es **determinístico**: si `x` recibe el mismo evento en dos ejecuciones y su estado interno es igual en ambas, el nuevo estado también será igual. Ver [§17](#ambientes).
+El estado interno `σ(x,t)` es el **contenido de los registros** de `x` más el **valor de su reloj** `c_x` en el instante `t`. Se modifica **solo por la ocurrencia de eventos**, y es **determinístico**: si `x` recibe el mismo evento en dos ejecuciones y su estado interno es igual en ambas, el nuevo estado también será igual. Ver [§19](#ambientes).
 
 ### Ej 5 — Diseño de sistemas
 
@@ -2360,7 +2450,7 @@ impl Handler<AgregarVotos> for ContadorActor {
 
 **[Parcial] Diseñar con actores: el restaurante de San Telmo**
 
-Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de [§7](#mensajes). El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican `PlatoListo` a los mozos.
+Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de [§9](#actores). El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican `PlatoListo` a los mozos.
 
 **[Parcial] Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio**
 
