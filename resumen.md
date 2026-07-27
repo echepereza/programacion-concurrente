@@ -66,7 +66,41 @@ intercalar arbitrariamente
 
 (interleaving) las instrucciones de sus procesos componentes.
 
-El orden interno de cada proceso se respeta (**orden causal**), pero el sistema puede entrelazar las instrucciones de distintos procesos de *cualquier* manera. Por eso un mismo programa tiene **muchas ejecuciones posibles**: la salida puede depender del *escenario* de ejecución y no solo de la entrada. Esto es el **no determinismo** y es la raíz de casi todos los bugs de concurrencia.
+El orden interno de cada proceso se respeta (**orden causal**), pero el sistema puede entrelazar las instrucciones de distintos procesos de *cualquier* manera. Por eso un mismo programa tiene **muchos interleavings (ejecuciones) posibles**, y cuál ocurre lo decide el *scheduler*, no vos.
+
+¿La salida puede variar? No, si el programa es correcto.
+
+Lo que
+
+siempre
+
+varía es el
+
+interleaving
+
+(el camino de ejecución). Un programa
+
+correcto
+
+debe dar el
+
+mismo resultado correcto en todos
+
+los interleavings — ese es justamente el objetivo de la
+
+corrección
+
+. El peligro es al revés: un programa
+
+mal sincronizado
+
+SÍ produce salidas distintas (o incorrectas) según el escenario, y eso es un
+
+bug
+
+(una race condition). Regla de oro: «el programa debe cumplir su objetivo sin importar cómo el scheduler decida ejecutarlo».
+
+A esa dependencia del escenario en un programa *sin* las garantías adecuadas se la llama **no determinismo**, y es la raíz de casi todos los bugs de concurrencia.
 
 ```mermaid
 flowchart LR
@@ -97,7 +131,7 @@ flowchart LR
 - **En un solo núcleo la concurrencia NO acelera** los ciclos de CPU: agrega overhead de context-switch. Corrige el error común «concurrencia = mejor uso de CPU».
 - **Atomicidad ≠ instrucción de máquina:** una *operación* como «leer-sumar-escribir» un contador NO es atómica para el procesador; la atomicidad la garantizás vos. Ejemplo de *lost update*: dos molinetes de un estadio leen 0, ambos escriben 1 → entraron 2 personas pero el contador marca 1.
 
-**En el final:** «Definir programa concurrente, proceso e instrucción atómica» y «por qué la salida de un programa concurrente puede variar». Respuesta: porque la ejecución es una intercalación arbitraria de instrucciones atómicas; solo se preserva el orden causal de cada proceso, así que hay múltiples escenarios y la corrección debe valer en *todos*.
+**En el final:** «Definir programa concurrente, proceso e instrucción atómica» y «por qué la salida de un programa concurrente puede variar». Respuesta precisa: lo que varía es el *interleaving* (intercalación arbitraria de instrucciones atómicas, preservando solo el orden causal de cada proceso), así que hay múltiples escenarios. Un programa *mal sincronizado* puede dar resultados distintos según el escenario (bug); la **corrección** exige que el resultado sea el correcto en *todos* los escenarios.
 
 <a id="threads"></a>
 
@@ -220,6 +254,62 @@ la verifica en compilación, así que un data race clásico ni siquiera compila.
 | `Box&lt;T&gt;` | Un único dueño de un valor en el heap. | Un solo hilo. |
 | `Rc&lt;T&gt;` | Múltiples dueños compartidos (conteo de referencias) inmutables. | **Un solo hilo** (el contador no es atómico). |
 | `Arc&lt;T&gt;` | *Atomic Rc*: múltiples dueños compartidos desde **varios threads**. | Seguro entre hilos (contador atómico). |
+
+Ejemplos concretos de cuándo usar cada uno:
+
+```rust
+use std::rc::Rc;
+use std::sync::Arc;
+use std::thread;
+
+// Box<T>: UN dueño, valor en el heap. Imprescindible para tipos recursivos
+// (el compilador no sabría el tamaño en el stack) o para mover algo grande.
+enum Lista { Nodo(i32, Box<Lista>), Fin }
+let _l = Lista::Nodo(1, Box::new(Lista::Nodo(2, Box::new(Lista::Fin))));
+
+// Rc<T>: VARIOS dueños del MISMO dato, en UN solo hilo (contador no atómico).
+let compartido = Rc::new(vec![1, 2, 3]);
+let _a = Rc::clone(&compartido);           // cuenta = 2
+let _b = Rc::clone(&compartido);           // cuenta = 3 (3 dueños, un solo Vec)
+println!("dueños: {}", Rc::strong_count(&compartido)); // 3
+
+// Arc<T>: como Rc pero SEGURO entre hilos (contador atómico).
+let datos = Arc::new(vec![1, 2, 3]);
+let mut hs = vec![];
+for _ in 0..3 {
+    let datos = Arc::clone(&datos);        // cada hilo recibe su clon del puntero
+    hs.push(thread::spawn(move || println!("{:?}", datos)));
+}
+for h in hs { h.join().unwrap(); }
+
+// Si en el for usaras Rc en vez de Arc:
+//   NO COMPILA -> "Rc<Vec<i32>> cannot be sent between threads safely".
+//   El compilador te empuja a Arc.
+```
+
+Regla mental:
+
+¿un solo dueño? →
+
+Box
+
+. ¿varios dueños, un hilo? →
+
+Rc
+
+. ¿varios dueños, varios hilos? →
+
+Arc
+
+. Los tres comparten de forma
+
+inmutable
+
+; para
+
+mutar
+
+se agrega un lock adentro (abajo).
 
 Para *mutar* algo compartido entre hilos se combina `Arc` (compartir) con un lock (`Mutex` o `RwLock`) que serializa el acceso: el patrón `Arc&lt;Mutex&lt;T&gt;&gt;`.
 
@@ -478,8 +568,8 @@ await
 ```mermaid
 stateDiagram-v2
     [*] --> Pending
-    Pending --> Pending: poll() -> aún no listo
-    Pending --> Ready: poll() -> Poll::Ready(out)
+    Pending --> Pending: poll sin progreso
+    Pending --> Ready: poll con Ready
     Ready --> [*]: devuelve el valor
           
 ```
@@ -667,11 +757,11 @@ Los mensajes son estructuras simples e **inmutables**, procesadas de forma **asi
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Started: started() — contexto disponible
-    Started --> Running: estado normal (puede ser indefinido)
-    Running --> Stopping: Context::stop() / sin addr que lo referencien / sin objetos en el contexto
-    Stopping --> Running: stopping() devuelve Running (se reanuda)
-    Stopping --> Stopped: stopped() — último estado
+    [*] --> Started: started, ya hay contexto
+    Started --> Running: estado normal
+    Running --> Stopping: stop / sin dirección / sin objetos
+    Stopping --> Running: stopping devuelve Running
+    Stopping --> Stopped: stopped
     Stopped --> [*]
           
 ```

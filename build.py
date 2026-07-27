@@ -86,6 +86,8 @@ INJECTED_STYLE = """  <style>
     .exam-answer strong { color: inherit; }
     .cmp { display: grid; gap: 12px; margin: 18px 0; }
     @media (min-width: 720px) { .cmp.two { grid-template-columns: 1fr 1fr; } }
+    body.hide-code pre.code { display: none; }
+    body.hide-code pre.code + p { margin-top: 0; }
   </style>
 """
 
@@ -110,7 +112,32 @@ MERMAID_SCRIPT = """  <script type="module">
       sequence: { useMaxWidth: true }
     });
   </script>
+  <script>
+    (function () {
+      var KEY = 'concu-hide-code';
+      var btn = document.getElementById('code-toggle');
+      var lbl = document.getElementById('code-toggle-label');
+      function apply(hidden) {
+        document.body.classList.toggle('hide-code', hidden);
+        if (btn) { btn.classList.toggle('active', hidden); btn.setAttribute('aria-pressed', hidden ? 'true' : 'false'); }
+        if (lbl) { lbl.textContent = hidden ? 'Código oculto' : 'Código'; }
+      }
+      var hidden = localStorage.getItem(KEY) === '1';
+      apply(hidden);
+      if (btn) btn.addEventListener('click', function () {
+        hidden = !hidden;
+        localStorage.setItem(KEY, hidden ? '1' : '0');
+        apply(hidden);
+      });
+    })();
+  </script>
 </body>"""
+
+# Botón que se inyecta en la barra lateral (side-actions)
+CODE_TOGGLE_BUTTON = """<button class="icon-button wide" id="code-toggle" type="button" aria-pressed="false" title="Mostrar u ocultar los bloques de código">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m8 6-6 6 6 6"></path><path d="m16 6 6 6-6 6"></path></svg>
+        <span id="code-toggle-label">Código</span>
+      </button>"""
 
 
 def read(path):
@@ -179,6 +206,12 @@ def build_index(template, content_html, toc_html):
     # insert mermaid before the LAST </body>
     head, sep, tail = doc.rpartition('</body>')
     doc = head + MERMAID_SCRIPT[:-len('</body>')] + '</body>' + tail
+
+    # botón de toggle de código en la barra lateral
+    doc = doc.replace(
+        '<a class="icon-button wide" href="resumen.html">Resumen</a>',
+        CODE_TOGGLE_BUTTON + '\n      <a class="icon-button wide" href="resumen.html">Resumen</a>',
+        1)
 
     # brand text everywhere
     doc = doc.replace('Aprendizaje Automático', 'Programación Concurrente')

@@ -97,7 +97,9 @@
         <h3>Instrucción atómica e intercalación</h3>
         <p>Una <strong>instrucción atómica</strong> se ejecuta de principio a fin sin interrupciones, o no se ejecuta en absoluto. La idea más importante del cuatrimestre:</p>
         <div class="callout warning"><strong>La ejecución de un programa concurrente es una secuencia de instrucciones atómicas obtenida al <em>intercalar arbitrariamente</em> (interleaving) las instrucciones de sus procesos componentes.</strong></div>
-        <p>El orden interno de cada proceso se respeta (<strong>orden causal</strong>), pero el sistema puede entrelazar las instrucciones de distintos procesos de <em>cualquier</em> manera. Por eso un mismo programa tiene <strong>muchas ejecuciones posibles</strong>: la salida puede depender del <em>escenario</em> de ejecución y no solo de la entrada. Esto es el <strong>no determinismo</strong> y es la raíz de casi todos los bugs de concurrencia.</p>
+        <p>El orden interno de cada proceso se respeta (<strong>orden causal</strong>), pero el sistema puede entrelazar las instrucciones de distintos procesos de <em>cualquier</em> manera. Por eso un mismo programa tiene <strong>muchos interleavings (ejecuciones) posibles</strong>, y cuál ocurre lo decide el <em>scheduler</em>, no vos.</p>
+        <div class="callout"><strong>¿La salida puede variar? No, si el programa es correcto.</strong> Lo que <em>siempre</em> varía es el <strong>interleaving</strong> (el camino de ejecución). Un programa <strong>correcto</strong> debe dar el <em>mismo resultado correcto en todos</em> los interleavings — ese es justamente el objetivo de la <a href="#correccion">corrección</a>. El peligro es al revés: un programa <strong>mal sincronizado</strong> SÍ produce salidas distintas (o incorrectas) según el escenario, y eso es un <strong>bug</strong> (una race condition). Regla de oro: «el programa debe cumplir su objetivo sin importar cómo el scheduler decida ejecutarlo».</div>
+        <p>A esa dependencia del escenario en un programa <em>sin</em> las garantías adecuadas se la llama <strong>no determinismo</strong>, y es la raíz de casi todos los bugs de concurrencia.</p>
 
         <figure class="diagram">
           <div class="mermaid">
@@ -132,7 +134,7 @@ flowchart LR
           </ul>
         </details>
 
-        <p class="exam-answer"><strong>En el final:</strong> «Definir programa concurrente, proceso e instrucción atómica» y «por qué la salida de un programa concurrente puede variar». Respuesta: porque la ejecución es una intercalación arbitraria de instrucciones atómicas; solo se preserva el orden causal de cada proceso, así que hay múltiples escenarios y la corrección debe valer en <em>todos</em>.</p>
+        <p class="exam-answer"><strong>En el final:</strong> «Definir programa concurrente, proceso e instrucción atómica» y «por qué la salida de un programa concurrente puede variar». Respuesta precisa: lo que varía es el <em>interleaving</em> (intercalación arbitraria de instrucciones atómicas, preservando solo el orden causal de cada proceso), así que hay múltiples escenarios. Un programa <em>mal sincronizado</em> puede dar resultados distintos según el escenario (bug); la <strong>corrección</strong> exige que el resultado sea el correcto en <em>todos</em> los escenarios.</p>
       </section>
 
       <section class="chapter" id="threads" data-title="threads hilos procesos memoria compartida stack pc registros program counter estados proceso nuevo ready running waiting blocked finished scheduler tareas asincronicas verdadero falso">
@@ -241,6 +243,36 @@ stateDiagram-v2
             </tbody>
           </table>
         </div>
+        <p>Ejemplos concretos de cuándo usar cada uno:</p>
+        <pre class="code" data-lang="rust"><code>use std::rc::Rc;
+use std::sync::Arc;
+use std::thread;
+
+// Box&lt;T&gt;: UN dueño, valor en el heap. Imprescindible para tipos recursivos
+// (el compilador no sabría el tamaño en el stack) o para mover algo grande.
+enum Lista { Nodo(i32, Box&lt;Lista&gt;), Fin }
+let _l = Lista::Nodo(1, Box::new(Lista::Nodo(2, Box::new(Lista::Fin))));
+
+// Rc&lt;T&gt;: VARIOS dueños del MISMO dato, en UN solo hilo (contador no atómico).
+let compartido = Rc::new(vec![1, 2, 3]);
+let _a = Rc::clone(&amp;compartido);           // cuenta = 2
+let _b = Rc::clone(&amp;compartido);           // cuenta = 3 (3 dueños, un solo Vec)
+println!("dueños: {}", Rc::strong_count(&amp;compartido)); // 3
+
+// Arc&lt;T&gt;: como Rc pero SEGURO entre hilos (contador atómico).
+let datos = Arc::new(vec![1, 2, 3]);
+let mut hs = vec![];
+for _ in 0..3 {
+    let datos = Arc::clone(&amp;datos);        // cada hilo recibe su clon del puntero
+    hs.push(thread::spawn(move || println!("{:?}", datos)));
+}
+for h in hs { h.join().unwrap(); }
+
+// Si en el for usaras Rc en vez de Arc:
+//   NO COMPILA -&gt; "Rc&lt;Vec&lt;i32&gt;&gt; cannot be sent between threads safely".
+//   El compilador te empuja a Arc.</code></pre>
+        <div class="callout"><strong>Regla mental:</strong> ¿un solo dueño? → <code>Box</code>. ¿varios dueños, un hilo? → <code>Rc</code>. ¿varios dueños, varios hilos? → <code>Arc</code>. Los tres comparten de forma <em>inmutable</em>; para <em>mutar</em> se agrega un lock adentro (abajo).</div>
+
         <p>Para <em>mutar</em> algo compartido entre hilos se combina <code>Arc</code> (compartir) con un lock (<code>Mutex</code> o <code>RwLock</code>) que serializa el acceso: el patrón <code>Arc&lt;Mutex&lt;T&gt;&gt;</code>.</p>
 
         <pre class="code" data-lang="rust"><code>use std::sync::{Arc, Mutex};
@@ -473,8 +505,8 @@ flowchart LR
           <div class="mermaid">
 stateDiagram-v2
     [*] --> Pending
-    Pending --> Pending: poll() -> aún no listo
-    Pending --> Ready: poll() -> Poll::Ready(out)
+    Pending --> Pending: poll sin progreso
+    Pending --> Ready: poll con Ready
     Ready --> [*]: devuelve el valor
           </div>
           <figcaption>El executor pollea el future; mientras esté <code>Pending</code> lo deja «dormido» y atiende otras tareas; cuando el reactor avisa que puede progresar, lo vuelve a pollear.</figcaption>
@@ -635,11 +667,11 @@ flowchart LR
         <figure class="diagram">
           <div class="mermaid">
 stateDiagram-v2
-    [*] --> Started: started() — contexto disponible
-    Started --> Running: estado normal (puede ser indefinido)
-    Running --> Stopping: Context::stop() / sin addr que lo referencien / sin objetos en el contexto
-    Stopping --> Running: stopping() devuelve Running (se reanuda)
-    Stopping --> Stopped: stopped() — último estado
+    [*] --> Started: started, ya hay contexto
+    Started --> Running: estado normal
+    Running --> Stopping: stop / sin dirección / sin objetos
+    Stopping --> Running: stopping devuelve Running
+    Stopping --> Stopped: stopped
     Stopped --> [*]
           </div>
           <figcaption><strong>Started</strong> (se llama <code>started()</code>, ya hay contexto) → <strong>Running</strong> → <strong>Stopping</strong> (al llamar <code>Context::stop()</code>, o si nadie tiene su dirección, o si no quedan objetos registrados en el contexto) → <strong>Stopped</strong>.</figcaption>

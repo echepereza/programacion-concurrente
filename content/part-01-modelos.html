@@ -187,8 +187,8 @@ flowchart LR
           <div class="mermaid">
 stateDiagram-v2
     [*] --> Pending
-    Pending --> Pending: poll() -> aún no listo
-    Pending --> Ready: poll() -> Poll::Ready(out)
+    Pending --> Pending: poll sin progreso
+    Pending --> Ready: poll con Ready
     Ready --> [*]: devuelve el valor
           </div>
           <figcaption>El executor pollea el future; mientras esté <code>Pending</code> lo deja «dormido» y atiende otras tareas; cuando el reactor avisa que puede progresar, lo vuelve a pollear.</figcaption>

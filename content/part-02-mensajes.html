@@ -85,11 +85,11 @@ flowchart LR
         <figure class="diagram">
           <div class="mermaid">
 stateDiagram-v2
-    [*] --> Started: started() — contexto disponible
-    Started --> Running: estado normal (puede ser indefinido)
-    Running --> Stopping: Context::stop() / sin addr que lo referencien / sin objetos en el contexto
-    Stopping --> Running: stopping() devuelve Running (se reanuda)
-    Stopping --> Stopped: stopped() — último estado
+    [*] --> Started: started, ya hay contexto
+    Started --> Running: estado normal
+    Running --> Stopping: stop / sin dirección / sin objetos
+    Stopping --> Running: stopping devuelve Running
+    Stopping --> Stopped: stopped
     Stopped --> [*]
           </div>
           <figcaption><strong>Started</strong> (se llama <code>started()</code>, ya hay contexto) → <strong>Running</strong> → <strong>Stopping</strong> (al llamar <code>Context::stop()</code>, o si nadie tiene su dirección, o si no quedan objetos registrados en el contexto) → <strong>Stopped</strong>.</figcaption>
