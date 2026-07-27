@@ -36,22 +36,31 @@
         </ul>
 
         <h3>¿Es un busy-wait? (patrón de parcial)</h3>
-        <p>La clave: ¿el loop <strong>cede la CPU</strong> (sleep/yield/bloqueo) o <strong>gira sin hacer nada útil</strong>?</p>
+        <div class="callout danger"><strong>El <code>sleep</code> NO define si es busy-wait.</strong> Un <code>sleep</code> solo baja el uso de CPU; no convierte una espera <em>activa</em> en una espera <em>pasiva</em>. Lo que decide es <strong>qué hace el loop</strong>: ¿espera por una condición <em>chequeándola</em> (polling), o hace trabajo útil / se bloquea hasta el evento?</div>
         <div class="cmp two">
-          <div class="callout"><strong>NO es busy-wait</strong> si entre intento e intento hay <code>thread::sleep</code>, si se bloquea en un lock/semáforo, o si en cada vuelta hace <em>trabajo útil</em> (p. ej. minar y escribir un resultado, reintentar una conexión con espera).</div>
-          <div class="callout danger"><strong>SÍ es busy-wait</strong> si es un <code>loop { if cond { break } }</code> apretado que revisa una condición sin dormir ni bloquear: gasta 100% de CPU esperando.</div>
+          <div class="callout"><strong>NO es busy-wait</strong> cuando: <strong>(a)</strong> en cada vuelta hace <em>trabajo útil</em> sin depender de una condición de espera (minar y escribir un resultado); <strong>(b)</strong> se <strong>bloquea</strong> en un lock/semáforo/condvar y el SO lo despierta al llegar el evento; <strong>(c)</strong> reintenta una operación <em>externa</em> fallible (conectar a un server caído) con backoff, donde no hay forma de bloquearse.</div>
+          <div class="callout danger"><strong>SÍ es busy-wait (espera activa)</strong> cuando el loop <em>solo chequea una condición</em> sobre estado compartido para poder avanzar — <strong>haya o no un <code>sleep</code></strong>. El <code>while cond {}</code> apretado es la versión «caliente» (100% CPU); el <code>loop { if cond break; sleep }</code> es la «tibia» (poll-eo), pero <em>las dos son espera activa</em>. Lo correcto es <strong>bloquearse</strong> en un semáforo/condvar que te despierte.</div>
         </div>
-        <pre data-code="rust">// NO es busy-wait: hace trabajo y cede CPU con sleep
+        <pre data-code="rust">// (a) NO es busy-wait: cada vuelta hace TRABAJO ÚTIL, no espera una condición
 loop {
     let mined = rng.gen();
-    *mineral.write().unwrap() += mined;            // trabajo útil
-    thread::sleep(Duration::from_millis(delay));   // cede la CPU
+    *mineral.write().unwrap() += mined;            // produce trabajo
+    thread::sleep(Duration::from_millis(delay));   // solo pacing
 }
 
-// SÍ es busy-wait: gira sin ceder ni producir nada
+// busy-wait "caliente": gira chequeando una condición, 100% CPU
+loop { if *listo.lock().unwrap() { break; } }
+
+// busy-wait "TIBIO": el sleep NO lo salva, sigue poll-eando la condición
 loop {
-    if *listo.lock().unwrap() { break; }           // spin apretado -> quema CPU
-}</pre>
+    if *listo.lock().unwrap() { break; }
+    thread::sleep(Duration::from_millis(100));     // menos CPU, pero SIGUE siendo espera activa
+}
+
+// (b) CORRECTO — espera PASIVA: el SO te despierta cuando la condición se cumple
+let (lock, cvar) = &*par;
+let mut listo = lock.lock().unwrap();
+while !*listo { listo = cvar.wait(listo).unwrap(); }  // no consume CPU esperando</pre>
 
         <details>
           <summary>Matices de clase (para no perder puntos)</summary>

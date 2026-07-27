@@ -843,22 +843,31 @@ async fn main() {
         </ul>
 
         <h3>¿Es un busy-wait? (patrón de parcial)</h3>
-        <p>La clave: ¿el loop <strong>cede la CPU</strong> (sleep/yield/bloqueo) o <strong>gira sin hacer nada útil</strong>?</p>
+        <div class="callout danger"><strong>El <code>sleep</code> NO define si es busy-wait.</strong> Un <code>sleep</code> solo baja el uso de CPU; no convierte una espera <em>activa</em> en una espera <em>pasiva</em>. Lo que decide es <strong>qué hace el loop</strong>: ¿espera por una condición <em>chequeándola</em> (polling), o hace trabajo útil / se bloquea hasta el evento?</div>
         <div class="cmp two">
-          <div class="callout"><strong>NO es busy-wait</strong> si entre intento e intento hay <code>thread::sleep</code>, si se bloquea en un lock/semáforo, o si en cada vuelta hace <em>trabajo útil</em> (p. ej. minar y escribir un resultado, reintentar una conexión con espera).</div>
-          <div class="callout danger"><strong>SÍ es busy-wait</strong> si es un <code>loop { if cond { break } }</code> apretado que revisa una condición sin dormir ni bloquear: gasta 100% de CPU esperando.</div>
+          <div class="callout"><strong>NO es busy-wait</strong> cuando: <strong>(a)</strong> en cada vuelta hace <em>trabajo útil</em> sin depender de una condición de espera (minar y escribir un resultado); <strong>(b)</strong> se <strong>bloquea</strong> en un lock/semáforo/condvar y el SO lo despierta al llegar el evento; <strong>(c)</strong> reintenta una operación <em>externa</em> fallible (conectar a un server caído) con backoff, donde no hay forma de bloquearse.</div>
+          <div class="callout danger"><strong>SÍ es busy-wait (espera activa)</strong> cuando el loop <em>solo chequea una condición</em> sobre estado compartido para poder avanzar — <strong>haya o no un <code>sleep</code></strong>. El <code>while cond {}</code> apretado es la versión «caliente» (100% CPU); el <code>loop { if cond break; sleep }</code> es la «tibia» (poll-eo), pero <em>las dos son espera activa</em>. Lo correcto es <strong>bloquearse</strong> en un semáforo/condvar que te despierte.</div>
         </div>
-        <pre class="code" data-lang="rust"><code>// NO es busy-wait: hace trabajo y cede CPU con sleep
+        <pre class="code" data-lang="rust"><code>// (a) NO es busy-wait: cada vuelta hace TRABAJO ÚTIL, no espera una condición
 loop {
     let mined = rng.gen();
-    *mineral.write().unwrap() += mined;            // trabajo útil
-    thread::sleep(Duration::from_millis(delay));   // cede la CPU
+    *mineral.write().unwrap() += mined;            // produce trabajo
+    thread::sleep(Duration::from_millis(delay));   // solo pacing
 }
 
-// SÍ es busy-wait: gira sin ceder ni producir nada
+// busy-wait "caliente": gira chequeando una condición, 100% CPU
+loop { if *listo.lock().unwrap() { break; } }
+
+// busy-wait "TIBIO": el sleep NO lo salva, sigue poll-eando la condición
 loop {
-    if *listo.lock().unwrap() { break; }           // spin apretado -&gt; quema CPU
-}</code></pre>
+    if *listo.lock().unwrap() { break; }
+    thread::sleep(Duration::from_millis(100));     // menos CPU, pero SIGUE siendo espera activa
+}
+
+// (b) CORRECTO — espera PASIVA: el SO te despierta cuando la condición se cumple
+let (lock, cvar) = &amp;*par;
+let mut listo = lock.lock().unwrap();
+while !*listo { listo = cvar.wait(listo).unwrap(); }  // no consume CPU esperando</code></pre>
 
         <details>
           <summary>Matices de clase (para no perder puntos)</summary>
@@ -954,6 +963,21 @@ let datos = RwLock::new(vec![1, 2, 3]);
           <li><strong>Invariantes:</strong> <code>S.V &gt;= 0</code> y <code>S.V = k + #signal(S) - #wait(S)</code> (con <code>k</code> el valor inicial). Sirven para demostrar corrección.</li>
           <li>Tipos: <strong>System V</strong> y <strong>POSIX</strong>. En Rust: crate <code>std-semaphore</code> con <code>new(k)</code>, <code>acquire()</code>, <code>release()</code>, <code>access()</code> (RAII).</li>
         </ul>
+        <pre class="code" data-lang="rust"><code>// Semáforo como limitador de concurrencia: a lo sumo 3 threads en la sección a la vez
+use std_semaphore::Semaphore;
+use std::sync::Arc;
+use std::thread;
+
+let sem = Arc::new(Semaphore::new(3));           // 3 permisos (recursos disponibles)
+let mut hs = vec![];
+for i in 0..10 {
+    let sem = Arc::clone(&amp;sem);
+    hs.push(thread::spawn(move || {
+        let _permit = sem.access();              // acquire (wait); se libera solo al salir (RAII)
+        println!("trabajando {i}");              // acá adentro nunca hay más de 3 a la vez
+    }));                                         // al terminar el scope -&gt; release (signal)
+}
+for h in hs { h.join().unwrap(); }</code></pre>
 
         <h3>Barreras (<code>std::sync::Barrier</code>)</h3>
         <p>Sincronizan varios threads en un <strong>punto específico</strong> del cómputo: nadie sigue hasta que <em>todos</em> llegan.</p>
@@ -962,6 +986,25 @@ let datos = RwLock::new(vec![1, 2, 3]);
           <li>Uno de los threads se designa <strong>líder</strong> (<code>BarrierWaitResult::is_leader()</code>).</li>
           <li>Las barreras son <strong>reutilizables</strong> automáticamente.</li>
         </ul>
+        <pre class="code" data-lang="rust"><code>// Barrera: los N threads se esperan mutuamente en un punto antes de seguir
+use std::sync::{Arc, Barrier};
+use std::thread;
+
+let n = 4;
+let barrier = Arc::new(Barrier::new(n));
+let mut hs = vec![];
+for _ in 0..n {
+    let barrier = Arc::clone(&amp;barrier);
+    hs.push(thread::spawn(move || {
+        // fase 1: cada thread hace su parte...
+        let res = barrier.wait();                // BLOQUEA hasta que lleguen los 4
+        if res.is_leader() {                     // exactamente uno es "líder"
+            println!("líder de la ronda (p. ej. loguear una vez)");
+        }
+        // fase 2: todos arrancan juntos (la barrera se puede reusar)
+    }));
+}
+for h in hs { h.join().unwrap(); }</code></pre>
 
         <h3>Monitores</h3>
         <p>Un <strong>monitor</strong> combina <strong>exclusión mutua</strong> (solo un proceso ejecuta un procedimiento del monitor a la vez) con la capacidad de <strong>esperar a que una condición se cumpla</strong>. Componentes: nombre, variables internas <em>protegidas</em>, procedimientos que acceden a esas variables, interfaz pública, inicialización y <strong>variables de condición</strong>.</p>
@@ -1065,7 +1108,34 @@ loop {
 }</code></pre>
 
         <h3>El barbero dormilón</h3>
-        <p>Un barbero <strong>duerme</strong> si no hay clientes; cuando llega uno, si el barbero está libre lo despierta y lo atiende; si está ocupado, el cliente <strong>espera en una silla</strong> (si hay). Modela sincronización entre un servidor que se bloquea cuando no hay trabajo y clientes que llegan asincrónicamente (semáforos: clientes esperando, barbero listo, mutex de sillas).</p>
+        <p>Un barbero <strong>duerme</strong> si no hay clientes; cuando llega uno, si el barbero está libre lo despierta y lo atiende; si está ocupado, el cliente <strong>espera en una silla</strong> (si hay). Modela un <em>servidor que se bloquea cuando no hay trabajo</em> y clientes que llegan asincrónicamente. Se resuelve con dos semáforos (<code>clientes</code>: cuántos esperan, despiertan al barbero; <code>barbero</code>: el barbero está listo) y un mutex que protege el contador de sillas.</p>
+        <pre class="code" data-lang="rust"><code>use std_semaphore::Semaphore;
+use std::sync::{Arc, Mutex};
+
+const N: i32 = 3;                              // sillas en la sala de espera
+let clientes = Arc::new(Semaphore::new(0));   // # de clientes esperando
+let barbero  = Arc::new(Semaphore::new(0));   // el barbero avisa que está listo
+let sillas   = Arc::new(Mutex::new(0i32));    // sillas ocupadas (sección crítica)
+
+// --- Barbero (loop infinito) ---
+loop {
+    clientes.acquire();                        // DUERME acá si no hay clientes (V = 0)
+    *sillas.lock().unwrap() -= 1;              // se libera una silla
+    barbero.release();                         // "ya te atiendo"
+    cortar_pelo();                             // (fuera de la SC)
+}
+
+// --- Cliente ---
+let mut s = sillas.lock().unwrap();
+if *s &lt; N {
+    *s += 1;                                   // se sienta a esperar
+    clientes.release();                        // despierta al barbero (o suma a la cola)
+    drop(s);                                   // suelta el mutex ANTES de bloquearse
+    barbero.acquire();                         // espera su turno
+    cortarse_el_pelo();
+} else {
+    // no hay sillas libres: el cliente se va
+}</code></pre>
 
         <h3>Los filósofos comensales</h3>
         <p>Filósofos que alternan entre <strong>pensar</strong> y <strong>comer</strong>. Para comer necesitan <strong>dos palillos</strong> (los adyacentes), que son recursos compartidos. Si todos toman primero el palillo izquierdo, se produce <strong>deadlock</strong> (espera circular); una política injusta genera <strong>starvation</strong>.</p>
@@ -1091,10 +1161,42 @@ flowchart LR
           <li>Al recibir un pedido: si su palito está <strong>limpio</strong>, lo <strong>conserva</strong> (el vecino espera); si está <strong>sucio</strong>, lo <strong>limpia y lo entrega</strong>.</li>
           <li>Después de comer, todos sus palitos quedan <strong>sucios</strong>; si alguien los había pedido, los limpia y los manda.</li>
         </ul>
-        <div class="callout blue">La combinación «el de menor ID arranca con el palito» + «sucio se cede, limpio se retiene» garantiza <strong>no deadlock</strong> (no hay espera circular) y <strong>no starvation</strong> (un palito sucio siempre termina cediéndose). Es la solución distribuida clásica y la que se pide implementar con actores.</div>
+        <div class="callout blue"><strong>¿Por qué NO hay deadlock?</strong> El deadlock del problema clásico es una <em>espera circular</em>: cada filósofo tiene un palito y espera el del vecino, formando un ciclo. Chandy-Misra impone una <strong>prioridad que forma un orden acíclico</strong> y así rompe el ciclo. Pensalo como un grafo dirigido donde la flecha va del filósofo que <em>va a ceder</em> el palito hacia el que tiene <em>prioridad</em>: un palito <strong>sucio siempre se cede</strong>, así que la flecha apunta <em>hacia afuera</em> del que lo tiene sucio. La asignación inicial (todos los palitos sucios, en manos del de menor ID) hace ese grafo <strong>acíclico</strong>. Y se mantiene acíclico: cuando un filósofo <em>termina de comer</em>, todos sus palitos quedan sucios (todas sus flechas apuntan hacia afuera) → pasa a tener la <strong>menor</strong> prioridad. Nunca se forma un ciclo de «todos retienen un palito limpio que el vecino quiere» ⇒ <strong>sin espera circular ⇒ sin deadlock</strong> (se rompe la condición de Coffman de <a href="#correccion">§10</a>).</div>
+        <div class="callout"><strong>¿Por qué NO hay starvation?</strong> Un filósofo hambriento pide los palitos que le faltan. Como un palito <em>sucio</em> siempre se entrega, sus pedidos <em>no</em> pueden ignorarse para siempre. Y apenas come, sus palitos quedan sucios y su prioridad cae al mínimo, así que los vecinos que también quieren comer pasan adelante. Resultado: entre dos comidas de un mismo filósofo, cada vecino contendiente come a lo sumo una vez → todos progresan y <strong>nadie se muere de hambre</strong>. Es la solución distribuida clásica, y por ser 100% por mensajes se implementa naturalmente con <a href="#actores">actores</a>.</div>
 
         <h3>Los fumadores (Patil)</h3>
-        <p>Tres fumadores, cada uno con un ingrediente infinito distinto (<strong>tabaco</strong>, <strong>papel</strong>, <strong>fósforos</strong>). Un <em>agente</em> pone dos ingredientes aleatorios en la mesa; el fumador que tiene el <strong>tercero</strong> los toma, arma el cigarrillo y fuma. Ejercita despertar selectivamente al proceso correcto según la combinación disponible.</p>
+        <p>Tres fumadores, cada uno con un ingrediente <em>infinito</em> distinto (<strong>tabaco</strong>, <strong>papel</strong>, <strong>fósforos</strong>). Un <strong>agente</strong> pone dos ingredientes al azar en la mesa; el fumador que tiene el <strong>tercero</strong> los toma, arma el cigarrillo, fuma, y recién ahí el agente repone. Ejercita <strong>despertar selectivamente</strong> al proceso correcto según la combinación disponible.</p>
+        <div class="callout warning"><strong>Por qué es un problema (el punto de Patil):</strong> con semáforos «ingenuos» (uno por ingrediente) un fumador necesita <em>dos</em>, así que haría <code>wait(papel); wait(fósforo)</code>. Si el agente pone papel+fósforo pero <em>dos</em> fumadores distintos toman uno cada uno y esperan el otro → <strong>deadlock</strong>. No se puede «esperar por una combinación» con un solo <code>wait</code>. Patil lo usó para mostrar los <em>límites</em> de los semáforos.</div>
+        <p><strong>Solución con «pushers»</strong> (procesos auxiliares): se agregan tres <em>pushers</em>, uno por ingrediente, que observan lo que hay en la mesa. Con un <strong>mutex</strong> y tres flags booleanas combinan la información y despiertan <em>exactamente</em> al fumador que tiene el tercero. Así ningún fumador espera por una <em>combinación</em>: espera por «su» semáforo, que solo se libera cuando los otros dos ingredientes ya están.</p>
+        <pre class="code" data-lang="rust"><code>// 1 semáforo por ingrediente en la mesa + 1 por fumador + flags bajo mutex
+let agente     = Semaphore::new(1);
+let sem_papel  = Semaphore::new(0);   // "hay papel en la mesa" (análogos: sem_tabaco, sem_fosforo)
+let mutex      = Mutex::new(());
+let mut hay_tabaco = false;
+let mut hay_papel  = false;
+let mut hay_fosforo = false;
+let fum_tabaco = Semaphore::new(0);   // habilita al fumador que TIENE tabaco (le faltan papel+fósforo)
+
+// --- Agente: elige 2 al azar; ej. deja papel + fósforo =&gt; debe fumar el de TABACO ---
+agente.acquire();
+sem_papel.release();
+sem_fosforo.release();
+
+// --- Pusher de papel (hay uno análogo por cada ingrediente) ---
+loop {
+    sem_papel.acquire();                          // llegó papel a la mesa
+    let _g = mutex.lock().unwrap();               // sección crítica: leer/escribir flags
+    if hay_fosforo { hay_fosforo = false; fum_tabaco.release(); }   // papel+fósforo -&gt; fuma TABACO
+    else if hay_tabaco { hay_tabaco = false; fum_fosforo.release(); }
+    else { hay_papel = true; }                    // guardo que hay papel y espero el 2do
+}
+
+// --- Fumador que tiene tabaco (análogo para papel y fósforo) ---
+loop {
+    fum_tabaco.acquire();                         // ya están papel y fósforo en la mesa
+    armar_y_fumar();
+    agente.release();                             // ronda terminada: el agente repone
+}</code></pre>
 
         <h3>Lectores–Escritores</h3>
         <p>Varios procesos comparten un estado. Reglas: <strong>múltiples lectores</strong> pueden acceder simultáneamente; si un <strong>escritor</strong> accede, <strong>nadie</strong> más (lector o escritor) puede. Aparece starvation según la política:</p>
@@ -1809,13 +1911,13 @@ impl Handler&lt;Reservar&gt; for Producto {
         </details>
         <details>
           <summary>[Parcial] ¿Es busy-wait? Analizar fragmentos de código</summary>
-          <p><strong>Regla:</strong> es busy-wait solo si el loop <em>gira consumiendo CPU sin ceder ni hacer trabajo útil</em>.</p>
+          <p><strong>Regla:</strong> es busy-wait (espera activa) si el loop <em>espera por una condición chequeándola</em> (polling), <strong>haya o no <code>sleep</code></strong>; NO lo es si hace <em>trabajo útil</em> sin condición de espera, o si se <em>bloquea</em> hasta el evento. El <code>sleep</code> baja el CPU pero no cambia la naturaleza.</p>
           <ul class="study-list">
-            <li>Minero que en cada vuelta <em>mina</em>, escribe un resultado y hace <code>thread::sleep</code> → <strong>NO</strong> es busy-wait (hace trabajo útil y cede CPU).</li>
-            <li>Loop que toma un <code>write lock</code>, si acumuló ≥100 produce una batería, y duerme 500 ms → <strong>NO</strong> (duerme entre chequeos y produce cuando corresponde).</li>
-            <li><code>loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }</code> → <strong>NO</strong> (reintenta con espera).</li>
-            <li>Loop que revisa vencimientos en una lista y hace <code>sleep</code> aleatorio entre pasadas → <strong>NO</strong>.</li>
-            <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait (spin apretado).</li>
+            <li>Minero que en cada vuelta <em>mina</em> y escribe un resultado (con <code>sleep</code> de pacing) → <strong>NO</strong>: hace trabajo útil, no espera una condición.</li>
+            <li>Loop que toma el <code>write lock</code> y produce una batería <em>si</em> acumuló ≥100, si no duerme 500 ms → <strong>SÍ, espera activa «tibia»</strong>: cuando no llega a 100, poll-ea la condición con sleep. Lo correcto es un condvar que lo despierte al llegar a 100.</li>
+            <li><code>loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }</code> → <strong>NO</strong>: reintenta una operación <em>externa</em> (red) donde no podés bloquearte; backoff legítimo.</li>
+            <li>Loop que <em>procesa</em> los vencidos de una lista en cada pasada con <code>sleep</code> → <strong>NO</strong> si hace el trabajo (tarea periódica); sería espera activa si solo mirara sin hacer nada hasta que algo venza.</li>
+            <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait «caliente» (spin, 100% CPU).</li>
           </ul>
           <p>Ver la regla completa en <a href="#correccion">§10</a>.</p>
         </details>

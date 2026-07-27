@@ -993,40 +993,113 @@ Una **sección crítica** es un bloque donde los procesos acceden a recursos com
 
 ### ¿Es un busy-wait? (patrón de parcial)
 
-La clave: ¿el loop **cede la CPU** (sleep/yield/bloqueo) o **gira sin hacer nada útil**?
+El
+
+sleep
+
+NO define si es busy-wait.
+
+Un
+
+sleep
+
+solo baja el uso de CPU; no convierte una espera
+
+activa
+
+en una espera
+
+pasiva
+
+. Lo que decide es
+
+qué hace el loop
+
+: ¿espera por una condición
+
+chequeándola
+
+(polling), o hace trabajo útil / se bloquea hasta el evento?
 
 NO es busy-wait
 
-si entre intento e intento hay
+cuando:
 
-thread::sleep
+(a)
 
-, si se bloquea en un lock/semáforo, o si en cada vuelta hace
+en cada vuelta hace
 
 trabajo útil
 
-(p. ej. minar y escribir un resultado, reintentar una conexión con espera).
+sin depender de una condición de espera (minar y escribir un resultado);
 
-SÍ es busy-wait
+(b)
 
-si es un
+se
 
-loop { if cond { break } }
+bloquea
 
-apretado que revisa una condición sin dormir ni bloquear: gasta 100% de CPU esperando.
+en un lock/semáforo/condvar y el SO lo despierta al llegar el evento;
+
+(c)
+
+reintenta una operación
+
+externa
+
+fallible (conectar a un server caído) con backoff, donde no hay forma de bloquearse.
+
+SÍ es busy-wait (espera activa)
+
+cuando el loop
+
+solo chequea una condición
+
+sobre estado compartido para poder avanzar —
+
+haya o no un
+
+sleep
+
+. El
+
+while cond {}
+
+apretado es la versión «caliente» (100% CPU); el
+
+loop { if cond break; sleep }
+
+es la «tibia» (poll-eo), pero
+
+las dos son espera activa
+
+. Lo correcto es
+
+bloquearse
+
+en un semáforo/condvar que te despierte.
 
 ```rust
-// NO es busy-wait: hace trabajo y cede CPU con sleep
+// (a) NO es busy-wait: cada vuelta hace TRABAJO ÚTIL, no espera una condición
 loop {
     let mined = rng.gen();
-    *mineral.write().unwrap() += mined;            // trabajo útil
-    thread::sleep(Duration::from_millis(delay));   // cede la CPU
+    *mineral.write().unwrap() += mined;            // produce trabajo
+    thread::sleep(Duration::from_millis(delay));   // solo pacing
 }
 
-// SÍ es busy-wait: gira sin ceder ni producir nada
+// busy-wait "caliente": gira chequeando una condición, 100% CPU
+loop { if *listo.lock().unwrap() { break; } }
+
+// busy-wait "TIBIO": el sleep NO lo salva, sigue poll-eando la condición
 loop {
-    if *listo.lock().unwrap() { break; }           // spin apretado -> quema CPU
+    if *listo.lock().unwrap() { break; }
+    thread::sleep(Duration::from_millis(100));     // menos CPU, pero SIGUE siendo espera activa
 }
+
+// (b) CORRECTO — espera PASIVA: el SO te despierta cuando la condición se cumple
+let (lock, cvar) = &*par;
+let mut listo = lock.lock().unwrap();
+while !*listo { listo = cvar.wait(listo).unwrap(); }  // no consume CPU esperando
 ```
 
 **Matices de clase (para no perder puntos)**
@@ -1141,6 +1214,24 @@ Un semáforo es un tipo con un entero no negativo **`V`** y un conjunto de proce
 - **Invariantes:** `S.V &gt;= 0` y `S.V = k + #signal(S) - #wait(S)` (con `k` el valor inicial). Sirven para demostrar corrección.
 - Tipos: **System V** y **POSIX**. En Rust: crate `std-semaphore` con `new(k)`, `acquire()`, `release()`, `access()` (RAII).
 
+```rust
+// Semáforo como limitador de concurrencia: a lo sumo 3 threads en la sección a la vez
+use std_semaphore::Semaphore;
+use std::sync::Arc;
+use std::thread;
+
+let sem = Arc::new(Semaphore::new(3));           // 3 permisos (recursos disponibles)
+let mut hs = vec![];
+for i in 0..10 {
+    let sem = Arc::clone(&sem);
+    hs.push(thread::spawn(move || {
+        let _permit = sem.access();              // acquire (wait); se libera solo al salir (RAII)
+        println!("trabajando {i}");              // acá adentro nunca hay más de 3 a la vez
+    }));                                         // al terminar el scope -> release (signal)
+}
+for h in hs { h.join().unwrap(); }
+```
+
 ### Barreras (std::sync::Barrier)
 
 Sincronizan varios threads en un **punto específico** del cómputo: nadie sigue hasta que *todos* llegan.
@@ -1148,6 +1239,28 @@ Sincronizan varios threads en un **punto específico** del cómputo: nadie sigue
 - `Barrier::new(n)`: barrera para `n` threads. `wait()`: bloquea hasta que los `n` lleguen.
 - Uno de los threads se designa **líder** (`BarrierWaitResult::is_leader()`).
 - Las barreras son **reutilizables** automáticamente.
+
+```rust
+// Barrera: los N threads se esperan mutuamente en un punto antes de seguir
+use std::sync::{Arc, Barrier};
+use std::thread;
+
+let n = 4;
+let barrier = Arc::new(Barrier::new(n));
+let mut hs = vec![];
+for _ in 0..n {
+    let barrier = Arc::clone(&barrier);
+    hs.push(thread::spawn(move || {
+        // fase 1: cada thread hace su parte...
+        let res = barrier.wait();                // BLOQUEA hasta que lleguen los 4
+        if res.is_leader() {                     // exactamente uno es "líder"
+            println!("líder de la ronda (p. ej. loguear una vez)");
+        }
+        // fase 2: todos arrancan juntos (la barrera se puede reusar)
+    }));
+}
+for h in hs { h.join().unwrap(); }
+```
 
 ### Monitores
 
@@ -1273,7 +1386,37 @@ loop {
 
 ### El barbero dormilón
 
-Un barbero **duerme** si no hay clientes; cuando llega uno, si el barbero está libre lo despierta y lo atiende; si está ocupado, el cliente **espera en una silla** (si hay). Modela sincronización entre un servidor que se bloquea cuando no hay trabajo y clientes que llegan asincrónicamente (semáforos: clientes esperando, barbero listo, mutex de sillas).
+Un barbero **duerme** si no hay clientes; cuando llega uno, si el barbero está libre lo despierta y lo atiende; si está ocupado, el cliente **espera en una silla** (si hay). Modela un *servidor que se bloquea cuando no hay trabajo* y clientes que llegan asincrónicamente. Se resuelve con dos semáforos (`clientes`: cuántos esperan, despiertan al barbero; `barbero`: el barbero está listo) y un mutex que protege el contador de sillas.
+
+```rust
+use std_semaphore::Semaphore;
+use std::sync::{Arc, Mutex};
+
+const N: i32 = 3;                              // sillas en la sala de espera
+let clientes = Arc::new(Semaphore::new(0));   // # de clientes esperando
+let barbero  = Arc::new(Semaphore::new(0));   // el barbero avisa que está listo
+let sillas   = Arc::new(Mutex::new(0i32));    // sillas ocupadas (sección crítica)
+
+// --- Barbero (loop infinito) ---
+loop {
+    clientes.acquire();                        // DUERME acá si no hay clientes (V = 0)
+    *sillas.lock().unwrap() -= 1;              // se libera una silla
+    barbero.release();                         // "ya te atiendo"
+    cortar_pelo();                             // (fuera de la SC)
+}
+
+// --- Cliente ---
+let mut s = sillas.lock().unwrap();
+if *s < N {
+    *s += 1;                                   // se sienta a esperar
+    clientes.release();                        // despierta al barbero (o suma a la cola)
+    drop(s);                                   // suelta el mutex ANTES de bloquearse
+    barbero.acquire();                         // espera su turno
+    cortarse_el_pelo();
+} else {
+    // no hay sillas libres: el cliente se va
+}
+```
 
 ### Los filósofos comensales
 
@@ -1302,19 +1445,139 @@ Versión por **pasaje de mensajes** (sin memoria compartida), **libre de deadloc
 - Al recibir un pedido: si su palito está **limpio**, lo **conserva** (el vecino espera); si está **sucio**, lo **limpia y lo entrega**.
 - Después de comer, todos sus palitos quedan **sucios**; si alguien los había pedido, los limpia y los manda.
 
-La combinación «el de menor ID arranca con el palito» + «sucio se cede, limpio se retiene» garantiza
+¿Por qué NO hay deadlock?
 
-no deadlock
+El deadlock del problema clásico es una
 
-(no hay espera circular) y
+espera circular
 
-no starvation
+: cada filósofo tiene un palito y espera el del vecino, formando un ciclo. Chandy-Misra impone una
 
-(un palito sucio siempre termina cediéndose). Es la solución distribuida clásica y la que se pide implementar con actores.
+prioridad que forma un orden acíclico
+
+y así rompe el ciclo. Pensalo como un grafo dirigido donde la flecha va del filósofo que
+
+va a ceder
+
+el palito hacia el que tiene
+
+prioridad
+
+: un palito
+
+sucio siempre se cede
+
+, así que la flecha apunta
+
+hacia afuera
+
+del que lo tiene sucio. La asignación inicial (todos los palitos sucios, en manos del de menor ID) hace ese grafo
+
+acíclico
+
+. Y se mantiene acíclico: cuando un filósofo
+
+termina de comer
+
+, todos sus palitos quedan sucios (todas sus flechas apuntan hacia afuera) → pasa a tener la
+
+menor
+
+prioridad. Nunca se forma un ciclo de «todos retienen un palito limpio que el vecino quiere» ⇒
+
+sin espera circular ⇒ sin deadlock
+
+(se rompe la condición de Coffman de
+
+§10
+
+).
+
+¿Por qué NO hay starvation?
+
+Un filósofo hambriento pide los palitos que le faltan. Como un palito
+
+sucio
+
+siempre se entrega, sus pedidos
+
+no
+
+pueden ignorarse para siempre. Y apenas come, sus palitos quedan sucios y su prioridad cae al mínimo, así que los vecinos que también quieren comer pasan adelante. Resultado: entre dos comidas de un mismo filósofo, cada vecino contendiente come a lo sumo una vez → todos progresan y
+
+nadie se muere de hambre
+
+. Es la solución distribuida clásica, y por ser 100% por mensajes se implementa naturalmente con
+
+actores
+
+.
 
 ### Los fumadores (Patil)
 
-Tres fumadores, cada uno con un ingrediente infinito distinto (**tabaco**, **papel**, **fósforos**). Un *agente* pone dos ingredientes aleatorios en la mesa; el fumador que tiene el **tercero** los toma, arma el cigarrillo y fuma. Ejercita despertar selectivamente al proceso correcto según la combinación disponible.
+Tres fumadores, cada uno con un ingrediente *infinito* distinto (**tabaco**, **papel**, **fósforos**). Un **agente** pone dos ingredientes al azar en la mesa; el fumador que tiene el **tercero** los toma, arma el cigarrillo, fuma, y recién ahí el agente repone. Ejercita **despertar selectivamente** al proceso correcto según la combinación disponible.
+
+Por qué es un problema (el punto de Patil):
+
+con semáforos «ingenuos» (uno por ingrediente) un fumador necesita
+
+dos
+
+, así que haría
+
+wait(papel); wait(fósforo)
+
+. Si el agente pone papel+fósforo pero
+
+dos
+
+fumadores distintos toman uno cada uno y esperan el otro →
+
+deadlock
+
+. No se puede «esperar por una combinación» con un solo
+
+wait
+
+. Patil lo usó para mostrar los
+
+límites
+
+de los semáforos.
+
+**Solución con «pushers»** (procesos auxiliares): se agregan tres *pushers*, uno por ingrediente, que observan lo que hay en la mesa. Con un **mutex** y tres flags booleanas combinan la información y despiertan *exactamente* al fumador que tiene el tercero. Así ningún fumador espera por una *combinación*: espera por «su» semáforo, que solo se libera cuando los otros dos ingredientes ya están.
+
+```rust
+// 1 semáforo por ingrediente en la mesa + 1 por fumador + flags bajo mutex
+let agente     = Semaphore::new(1);
+let sem_papel  = Semaphore::new(0);   // "hay papel en la mesa" (análogos: sem_tabaco, sem_fosforo)
+let mutex      = Mutex::new(());
+let mut hay_tabaco = false;
+let mut hay_papel  = false;
+let mut hay_fosforo = false;
+let fum_tabaco = Semaphore::new(0);   // habilita al fumador que TIENE tabaco (le faltan papel+fósforo)
+
+// --- Agente: elige 2 al azar; ej. deja papel + fósforo => debe fumar el de TABACO ---
+agente.acquire();
+sem_papel.release();
+sem_fosforo.release();
+
+// --- Pusher de papel (hay uno análogo por cada ingrediente) ---
+loop {
+    sem_papel.acquire();                          // llegó papel a la mesa
+    let _g = mutex.lock().unwrap();               // sección crítica: leer/escribir flags
+    if hay_fosforo { hay_fosforo = false; fum_tabaco.release(); }   // papel+fósforo -> fuma TABACO
+    else if hay_tabaco { hay_tabaco = false; fum_fosforo.release(); }
+    else { hay_papel = true; }                    // guardo que hay papel y espero el 2do
+}
+
+// --- Fumador que tiene tabaco (análogo para papel y fósforo) ---
+loop {
+    fum_tabaco.acquire();                         // ya están papel y fósforo en la mesa
+    armar_y_fumar();
+    agente.release();                             // ronda terminada: el agente repone
+}
+```
 
 ### Lectores–Escritores
 
@@ -2256,13 +2519,13 @@ Con un **timestamp único y global** por transacción al iniciar. Al bloquearse 
 
 **[Parcial] ¿Es busy-wait? Analizar fragmentos de código**
 
-**Regla:** es busy-wait solo si el loop *gira consumiendo CPU sin ceder ni hacer trabajo útil*.
+**Regla:** es busy-wait (espera activa) si el loop *espera por una condición chequeándola* (polling), **haya o no `sleep`**; NO lo es si hace *trabajo útil* sin condición de espera, o si se *bloquea* hasta el evento. El `sleep` baja el CPU pero no cambia la naturaleza.
 
-- Minero que en cada vuelta *mina*, escribe un resultado y hace `thread::sleep` → **NO** es busy-wait (hace trabajo útil y cede CPU).
-- Loop que toma un `write lock`, si acumuló ≥100 produce una batería, y duerme 500 ms → **NO** (duerme entre chequeos y produce cuando corresponde).
-- `loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }` → **NO** (reintenta con espera).
-- Loop que revisa vencimientos en una lista y hace `sleep` aleatorio entre pasadas → **NO**.
-- `loop { if *flag.lock() { break } }` sin sleep → **SÍ**, busy-wait (spin apretado).
+- Minero que en cada vuelta *mina* y escribe un resultado (con `sleep` de pacing) → **NO**: hace trabajo útil, no espera una condición.
+- Loop que toma el `write lock` y produce una batería *si* acumuló ≥100, si no duerme 500 ms → **SÍ, espera activa «tibia»**: cuando no llega a 100, poll-ea la condición con sleep. Lo correcto es un condvar que lo despierte al llegar a 100.
+- `loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }` → **NO**: reintenta una operación *externa* (red) donde no podés bloquearte; backoff legítimo.
+- Loop que *procesa* los vencidos de una lista en cada pasada con `sleep` → **NO** si hace el trabajo (tarea periódica); sería espera activa si solo mirara sin hacer nada hasta que algo venza.
+- `loop { if *flag.lock() { break } }` sin sleep → **SÍ**, busy-wait «caliente» (spin, 100% CPU).
 
 Ver la regla completa en [§10](#correccion).
 

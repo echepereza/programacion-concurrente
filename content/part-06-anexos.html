@@ -139,13 +139,13 @@ impl Handler<Reservar> for Producto {
         </details>
         <details>
           <summary>[Parcial] ¿Es busy-wait? Analizar fragmentos de código</summary>
-          <p><strong>Regla:</strong> es busy-wait solo si el loop <em>gira consumiendo CPU sin ceder ni hacer trabajo útil</em>.</p>
+          <p><strong>Regla:</strong> es busy-wait (espera activa) si el loop <em>espera por una condición chequeándola</em> (polling), <strong>haya o no <code>sleep</code></strong>; NO lo es si hace <em>trabajo útil</em> sin condición de espera, o si se <em>bloquea</em> hasta el evento. El <code>sleep</code> baja el CPU pero no cambia la naturaleza.</p>
           <ul class="study-list">
-            <li>Minero que en cada vuelta <em>mina</em>, escribe un resultado y hace <code>thread::sleep</code> → <strong>NO</strong> es busy-wait (hace trabajo útil y cede CPU).</li>
-            <li>Loop que toma un <code>write lock</code>, si acumuló ≥100 produce una batería, y duerme 500 ms → <strong>NO</strong> (duerme entre chequeos y produce cuando corresponde).</li>
-            <li><code>loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }</code> → <strong>NO</strong> (reintenta con espera).</li>
-            <li>Loop que revisa vencimientos en una lista y hace <code>sleep</code> aleatorio entre pasadas → <strong>NO</strong>.</li>
-            <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait (spin apretado).</li>
+            <li>Minero que en cada vuelta <em>mina</em> y escribe un resultado (con <code>sleep</code> de pacing) → <strong>NO</strong>: hace trabajo útil, no espera una condición.</li>
+            <li>Loop que toma el <code>write lock</code> y produce una batería <em>si</em> acumuló ≥100, si no duerme 500 ms → <strong>SÍ, espera activa «tibia»</strong>: cuando no llega a 100, poll-ea la condición con sleep. Lo correcto es un condvar que lo despierte al llegar a 100.</li>
+            <li><code>loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }</code> → <strong>NO</strong>: reintenta una operación <em>externa</em> (red) donde no podés bloquearte; backoff legítimo.</li>
+            <li>Loop que <em>procesa</em> los vencidos de una lista en cada pasada con <code>sleep</code> → <strong>NO</strong> si hace el trabajo (tarea periódica); sería espera activa si solo mirara sin hacer nada hasta que algo venza.</li>
+            <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait «caliente» (spin, 100% CPU).</li>
           </ul>
           <p>Ver la regla completa en <a href="#correccion">§10</a>.</p>
         </details>
