@@ -13,7 +13,7 @@ oscuro, offline) con contenido y diseño propios.
 ## Índice
 
 - [Qué incluye](#qué-incluye)
-- [Contenido (19 capítulos + 3 anexos)](#contenido-19-capítulos--3-anexos)
+- [Contenido (21 capítulos + 3 anexos)](#contenido-21-capítulos--3-anexos)
 - [Cómo usarla](#cómo-usarla)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Cómo hacer cambios](#cómo-hacer-cambios)
@@ -38,9 +38,9 @@ oscuro, offline) con contenido y diseño propios.
 - **Anexo de finales resueltos** (16/07/2026 y 09/07/2026) + un diseño de sistema completo.
 - **Banco de ejercicios** de parciales resueltos y un **glosario**.
 - **PWA:** buscador, notas en Markdown (se guardan solas), resaltador, modo claro/oscuro,
-  instalable y con funcionamiento **offline** (service worker).
+  **toggle para ocultar todo el código** (estudio teórico), instalable y **offline** (service worker).
 
-## Contenido (19 capítulos + 3 anexos)
+## Contenido (21 capítulos + 3 anexos)
 
 | # | Capítulo | Temas |
 | --- | --- | --- |
@@ -48,21 +48,23 @@ oscuro, offline) con contenido y diseño propios.
 | 02 | Procesos, threads y estados | memoria compartida, stack/PC/registros, proceso vs thread vs async, estados |
 | 03 | Rust: ownership y seguridad | ownership/borrow/move, RAII, `Box`/`Rc`/`Arc`, `Send`/`Sync` |
 | 04 | Panorama de modelos | estado compartido, fork-join, canales, async, actores — **cuándo usar cada uno** |
-| 05 | Fork-Join y paralelismo de datos | work stealing, Rayon, Crossbeam, MapReduce, SIMD, CUDA |
-| 06 | Programación asincrónica | futures, `poll`, modelo piñata, `async`/`await`, executors, `Pin`, runtimes |
-| 07 | Mensajes, canales y actores | mpsc, pipes/FIFO, RPC, modelo de actores, **Actix** y ciclo de vida |
-| 08 | Corrección: safety y liveness | **busy-wait / deadlock / race / starvation**, sección crítica, Coffman |
-| 09 | Locks y RwLock | lock/unlock, Unix advisory, `RwLock`, guards RAII, poisoned locks |
-| 10 | Semáforos, barreras y monitores | `wait`/`signal`, barreras, monitores, **monitor vs semáforo**, spurious wakeup |
-| 11 | Problemas clásicos | productor-consumidor, barbero, filósofos, fumadores, lector-escritor |
-| 12 | Redes de Petri | red ordinaria/general, disparo, **modelado** (asientos, buffer acotado, mutex) |
-| 13 | Transacciones distribuidas y ACID | ACID, 2PC, 2PL, concurrencia optimista, timestamps |
-| 14 | Deadlocks distribuidos | detección (centralizada/probe), prevención (wait-die/wound-wait) |
-| 15 | Exclusión mutua y elección de líder | centralizado, Ricart-Agrawala, token ring, Bully, Ring |
-| 16 | Sockets y cliente-servidor | TCP/UDP, iterativo/concurrente, syscalls, `TcpListener`/`TcpStream` |
-| 17 | Ambientes distribuidos | entidad y capacidades, **acción/regla/comportamiento**, conocimiento |
-| 18 | Redes y modelo OSI | capas, servicio vs protocolo, tipos de servicio, TCP/IP |
-| 19 | Testing de concurrencia | `#[cfg(test)]`, mockall, inyección de dependencias, **Loom** |
+| 05 | Fork-Join y paralelismo de datos | work stealing, Rayon, Crossbeam, MapReduce, Dremel, DAG |
+| 06 | Vectorización, SIMD y GPU | SIMD (lanes, vertical/horizontal), SIMT/warps, CUDA, host↔device, WebGPU |
+| 07 | Programación asincrónica | futures, `poll`, modelo piñata, `async`/`await`, executors, `Pin`, runtimes |
+| 08 | Mensajes y canales | mpsc, sincrónica/asincrónica, direccionamiento, pipes/FIFO, colas, RPC |
+| 09 | Modelo de actores | **Actix**, mailbox, ciclo de vida, Sync Arbiter, diseñar sistemas |
+| 10 | Corrección: safety y liveness | **busy-wait / deadlock / race / starvation**, sección crítica, Coffman |
+| 11 | Locks y RwLock | lock/unlock, Unix advisory, `RwLock`, guards RAII, poisoned locks, atómicos |
+| 12 | Semáforos, barreras y monitores | `wait`/`signal`, barreras, monitores, **monitor vs semáforo**, spurious wakeup |
+| 13 | Problemas clásicos | productor-consumidor, barbero, filósofos (+ Chandy-Misra), fumadores, lector-escritor |
+| 14 | Redes de Petri | red ordinaria/general, disparo, grafo de alcance, **modelado**, arco inhibidor |
+| 15 | Transacciones distribuidas y ACID | ACID, 2PC (+3PC/Sagas), 2PL, concurrencia optimista, timestamps |
+| 16 | Deadlocks distribuidos | detección (centralizada/probe), prevención (wait-die/wound-wait) |
+| 17 | Exclusión mutua y elección de líder | centralizado, Ricart-Agrawala, token ring, Bully, Ring |
+| 18 | Sockets y cliente-servidor | TCP/UDP, iterativo/concurrente, syscalls, `TcpListener`/`TcpStream` |
+| 19 | Ambientes distribuidos | entidad y capacidades, **acción/regla/comportamiento**, conocimiento |
+| 20 | Redes y modelo OSI | capas, PDUs, servicio vs protocolo, tipos de servicio, TCP/IP |
+| 21 | Testing de concurrencia | `#[cfg(test)]`, mockall, inyección de dependencias, **Loom** |
 | A | Finales resueltos | los 2 finales reales resueltos + diseño de sistema (venta online) |
 | B | Banco de ejercicios | parciales resueltos (busy-wait, modelos, Petri, actores, V/F) |
 | C | Glosario | definiciones breves de todos los términos |
@@ -92,14 +94,17 @@ programacion-concurrente/
 │
 ├── content/                # ← LA FUENTE DEL CONTENIDO (acá se edita)
 │   ├── part-00-fundamentos.html          (caps. 01-03)
-│   ├── part-01-modelos.html              (caps. 04-06)
-│   ├── part-02-mensajes.html             (cap.  07)
-│   ├── part-03-correccion-locks.html     (caps. 08-09)
-│   ├── part-03b-semaforos-clasicos.html  (caps. 10-11)
-│   ├── part-04-petri.html                (cap.  12)
-│   ├── part-05-distribuidos.html         (caps. 13-15)
-│   ├── part-05b-sockets-ambientes.html   (caps. 16-18)
-│   ├── part-05c-testing.html             (cap.  19)
+│   ├── part-01-modelos.html              (caps. 04-05)
+│   ├── part-01b-vectorizacion.html       (cap.  06)
+│   ├── part-01c-async.html               (cap.  07)
+│   ├── part-02-mensajes.html             (cap.  08)
+│   ├── part-02b-actores.html             (cap.  09)
+│   ├── part-03-correccion-locks.html     (caps. 10-11)
+│   ├── part-03b-semaforos-clasicos.html  (caps. 12-13)
+│   ├── part-04-petri.html                (cap.  14)
+│   ├── part-05-distribuidos.html         (caps. 15-17)
+│   ├── part-05b-sockets-ambientes.html   (caps. 18-20)
+│   ├── part-05c-testing.html             (cap.  21)
 │   └── part-06-anexos.html               (anexos A, B, C)
 ├── toc.html                # Índice de la barra lateral  ← FUENTE
 ├── build.py                # Ensambla index/resumen desde content/ + toc.html
