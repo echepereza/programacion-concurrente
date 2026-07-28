@@ -140,13 +140,61 @@ impl Handler<Reservar> for Producto {
         <details>
           <summary>[Parcial] ¿Es busy-wait? Analizar fragmentos de código</summary>
           <p><strong>Regla:</strong> es busy-wait (espera activa) si el loop <em>espera por una condición chequeándola</em> (polling), <strong>haya o no <code>sleep</code></strong>; NO lo es si hace <em>trabajo útil</em> sin condición de espera, o si se <em>bloquea</em> hasta el evento. El <code>sleep</code> baja el CPU pero no cambia la naturaleza.</p>
-          <ul class="study-list">
-            <li>Minero que en cada vuelta <em>mina</em> y escribe un resultado (con <code>sleep</code> de pacing) → <strong>NO</strong>: hace trabajo útil, no espera una condición.</li>
-            <li>Loop que toma el <code>write lock</code> y produce una batería <em>si</em> acumuló ≥100, si no duerme 500 ms → <strong>SÍ, espera activa «tibia»</strong>: cuando no llega a 100, poll-ea la condición con sleep. Lo correcto es un condvar que lo despierte al llegar a 100.</li>
-            <li><code>loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }</code> → <strong>NO</strong>: reintenta una operación <em>externa</em> (red) donde no podés bloquearte; backoff legítimo.</li>
-            <li>Loop que <em>procesa</em> los vencidos de una lista en cada pasada con <code>sleep</code> → <strong>NO</strong> si hace el trabajo (tarea periódica); sería espera activa si solo mirara sin hacer nada hasta que algo venza.</li>
-            <li><code>loop { if *flag.lock() { break } }</code> sin sleep → <strong>SÍ</strong>, busy-wait «caliente» (spin, 100% CPU).</li>
-          </ul>
+          <p><strong>1C 2024 · Fragmento A</strong> — minero que produce lithium:</p>
+          <pre data-code="rust">for _ in 0..MINERS {
+    let lithium = Arc::clone(&mineral);
+    thread::spawn(move || loop {
+        let mined: u64 = rand::thread_rng().gen();
+        *lithium.write().expect("failed to mine") += mined;   // trabajo útil INCONDICIONAL
+        thread::sleep(Duration::from_millis((5000.0 * rng.gen::<f64>()) as u64));
+    });
+}</pre>
+          <p>→ <strong>NO es busy-wait.</strong> Cada vuelta produce (mina y escribe) sin esperar ninguna condición; el <code>sleep</code> es solo pacing.</p>
+
+          <p><strong>1C 2024 · Fragmento B</strong> — produce una batería al juntar 100 de lithium:</p>
+          <pre data-code="rust">for _ in 0..MINERS {
+    let lithium = Arc::clone(&mineral);
+    let baterias = Arc::clone(&resources);
+    thread::spawn(move || loop {
+        let mut lithium = lithium.write().expect("failed");
+        if *lithium >= 100 {                       // <-- CONDICIÓN de espera
+            *lithium -= 100;
+            *baterias.write().expect("failed to produce") += 1;
+        }
+        thread::sleep(Duration::from_millis(500));
+    });
+}</pre>
+          <p>→ <strong>SÍ, espera activa «tibia».</strong> Cuando <code>lithium &lt; 100</code> no hace nada: <em>poll-ea</em> la condición «¿ya hay 100?» con un <code>sleep</code>. El sleep baja el CPU pero no lo vuelve espera pasiva. Correcto: una <code>Condvar</code> que despierte al hilo justo cuando el lithium llega a 100.</p>
+
+          <p><strong>2C 2024 · Fragmento A</strong> — reintento de conexión:</p>
+          <pre data-code="rust">loop {
+    match TcpStream::connect("127.0.0.1:8080") {
+        Ok(mut stream) => { stream.write_all(message.as_bytes()).expect("error"); }
+        Err(_) => { thread::sleep(Duration::from_millis((5000.0 * rng.gen::<f64>()) as u64)); }
+    }
+}</pre>
+          <p>→ <strong>NO es busy-wait.</strong> Reintenta una operación <em>externa</em> (un server que puede estar caído) con backoff; no hay forma de «bloquearse hasta que el server levante».</p>
+
+          <p><strong>2C 2024 · Fragmento B</strong> — procesa ACKs vencidos periódicamente:</p>
+          <pre data-code="rust">loop {
+    thread::sleep(Duration::from_millis(rng.gen()));
+    let mut items = self.pending_acks.lock().unwrap();
+    let now = Instant::now();
+    let mut i = 0;
+    while i < items.len() {
+        if items[i].expiration <= now {
+            if items[i].item_type == "ACK" {
+                let _ = items.remove(i);
+                drop(items);
+                self.send_result_interfaces();     // TRABAJO real por pasada
+                break;
+            }
+        } else { i += 1; }
+    }
+}</pre>
+          <p>→ <strong>NO es busy-wait</strong> (tarea periódica): cada pasada <em>procesa</em> los ítems vencidos; no se queda mirando una condición sin hacer nada.</p>
+
+          <p>Contraejemplo mínimo de busy-wait «caliente»: <code>loop { if *flag.lock().unwrap() { break; } }</code> — spin sin sleep ni trabajo, 100% CPU.</p>
           <p>Ver la regla completa en <a href="#correccion">§10</a>.</p>
         </details>
         <details>

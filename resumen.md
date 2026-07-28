@@ -1591,7 +1591,11 @@ Es exactamente lo que ofrece
 
 RwLock
 
-(capítulo 09):
+(
+
+§11
+
+):
 
 read()
 
@@ -1600,6 +1604,77 @@ read()
 write()
 
 = lock exclusivo. La política de preferencia depende del SO.
+
+#### Implementación fair con cola de turnos (ticket FIFO)
+
+El truco: cada thread «saca número» al llegar y se atiende en orden. El **lector**, al entrar, *avanza* el turno (deja pasar al siguiente ticket: si es otro lector, entra en paralelo); el **escritor** *no* avanza el turno hasta terminar, bloqueando a todos los que están detrás. Así ninguno se muere de hambre.
+
+```rust
+use std::sync::{Mutex, Condvar};
+
+struct Estado { proximo: u64, turno: u64, lectores: u32, escribiendo: bool }
+struct FairRw { m: Mutex<Estado>, cv: Condvar }
+
+impl FairRw {
+    fn new() -> Self {
+        FairRw { m: Mutex::new(Estado { proximo: 0, turno: 0, lectores: 0, escribiendo: false }),
+                 cv: Condvar::new() }
+    }
+
+    fn read_lock(&self) {
+        let mut s = self.m.lock().unwrap();
+        let mi = s.proximo; s.proximo += 1;                    // saco número (FIFO)
+        while s.turno != mi { s = self.cv.wait(s).unwrap(); }  // espero mi turno
+        s.lectores += 1;
+        s.turno += 1;                                          // AVANZO: entra el siguiente ticket
+        self.cv.notify_all();                                  // (si es lector, lee en paralelo)
+    }
+    fn read_unlock(&self) {
+        let mut s = self.m.lock().unwrap();
+        s.lectores -= 1;
+        if s.lectores == 0 { self.cv.notify_all(); }           // último lector: destraba al escritor
+    }
+
+    fn write_lock(&self) {
+        let mut s = self.m.lock().unwrap();
+        let mi = s.proximo; s.proximo += 1;
+        while s.turno != mi { s = self.cv.wait(s).unwrap(); }          // mi turno (FIFO)
+        while s.lectores > 0 { s = self.cv.wait(s).unwrap(); }         // espero que drenen los lectores
+        s.escribiendo = true;
+        // OJO: NO avanzo el turno -> los de atrás quedan bloqueados mientras escribo (exclusivo)
+    }
+    fn write_unlock(&self) {
+        let mut s = self.m.lock().unwrap();
+        s.escribiendo = false;
+        s.turno += 1;                                          // recién ahora dejo pasar al siguiente
+        self.cv.notify_all();
+    }
+}
+```
+
+Por qué es
+
+fair
+
+:
+
+los turnos se sirven en orden de llegada (FIFO), así que ni lectores ni escritores se postergan para siempre. Los lectores
+
+consecutivos
+
+se agrupan (cada uno avanza el turno e ingresa el siguiente), pero apenas hay un escritor en la cola, los lectores que llegan
+
+después
+
+sacan un número mayor y esperan su turno → el escritor no se muere de hambre. Cuando el escritor llega a su turno, espera a que
+
+drenen
+
+los lectores que ya estaban (
+
+lectores == 0
+
+) y recién ahí escribe en exclusiva.
 
 **Matices de clase (para no perder puntos)**
 
@@ -2521,11 +2596,77 @@ Con un **timestamp único y global** por transacción al iniciar. Al bloquearse 
 
 **Regla:** es busy-wait (espera activa) si el loop *espera por una condición chequeándola* (polling), **haya o no `sleep`**; NO lo es si hace *trabajo útil* sin condición de espera, o si se *bloquea* hasta el evento. El `sleep` baja el CPU pero no cambia la naturaleza.
 
-- Minero que en cada vuelta *mina* y escribe un resultado (con `sleep` de pacing) → **NO**: hace trabajo útil, no espera una condición.
-- Loop que toma el `write lock` y produce una batería *si* acumuló ≥100, si no duerme 500 ms → **SÍ, espera activa «tibia»**: cuando no llega a 100, poll-ea la condición con sleep. Lo correcto es un condvar que lo despierte al llegar a 100.
-- `loop { match TcpStream::connect(...) { Ok → usar; Err → sleep } }` → **NO**: reintenta una operación *externa* (red) donde no podés bloquearte; backoff legítimo.
-- Loop que *procesa* los vencidos de una lista en cada pasada con `sleep` → **NO** si hace el trabajo (tarea periódica); sería espera activa si solo mirara sin hacer nada hasta que algo venza.
-- `loop { if *flag.lock() { break } }` sin sleep → **SÍ**, busy-wait «caliente» (spin, 100% CPU).
+**1C 2024 · Fragmento A** — minero que produce lithium:
+
+```rust
+for _ in 0..MINERS {
+    let lithium = Arc::clone(&mineral);
+    thread::spawn(move || loop {
+        let mined: u64 = rand::thread_rng().gen();
+        *lithium.write().expect("failed to mine") += mined;   // trabajo útil INCONDICIONAL
+        thread::sleep(Duration::from_millis((5000.0 * rng.gen::<f64>()) as u64));
+    });
+}
+```
+
+→ **NO es busy-wait.** Cada vuelta produce (mina y escribe) sin esperar ninguna condición; el `sleep` es solo pacing.
+
+**1C 2024 · Fragmento B** — produce una batería al juntar 100 de lithium:
+
+```rust
+for _ in 0..MINERS {
+    let lithium = Arc::clone(&mineral);
+    let baterias = Arc::clone(&resources);
+    thread::spawn(move || loop {
+        let mut lithium = lithium.write().expect("failed");
+        if *lithium >= 100 {                       // <-- CONDICIÓN de espera
+            *lithium -= 100;
+            *baterias.write().expect("failed to produce") += 1;
+        }
+        thread::sleep(Duration::from_millis(500));
+    });
+}
+```
+
+→ **SÍ, espera activa «tibia».** Cuando `lithium &lt; 100` no hace nada: *poll-ea* la condición «¿ya hay 100?» con un `sleep`. El sleep baja el CPU pero no lo vuelve espera pasiva. Correcto: una `Condvar` que despierte al hilo justo cuando el lithium llega a 100.
+
+**2C 2024 · Fragmento A** — reintento de conexión:
+
+```rust
+loop {
+    match TcpStream::connect("127.0.0.1:8080") {
+        Ok(mut stream) => { stream.write_all(message.as_bytes()).expect("error"); }
+        Err(_) => { thread::sleep(Duration::from_millis((5000.0 * rng.gen::<f64>()) as u64)); }
+    }
+}
+```
+
+→ **NO es busy-wait.** Reintenta una operación *externa* (un server que puede estar caído) con backoff; no hay forma de «bloquearse hasta que el server levante».
+
+**2C 2024 · Fragmento B** — procesa ACKs vencidos periódicamente:
+
+```rust
+loop {
+    thread::sleep(Duration::from_millis(rng.gen()));
+    let mut items = self.pending_acks.lock().unwrap();
+    let now = Instant::now();
+    let mut i = 0;
+    while i < items.len() {
+        if items[i].expiration <= now {
+            if items[i].item_type == "ACK" {
+                let _ = items.remove(i);
+                drop(items);
+                self.send_result_interfaces();     // TRABAJO real por pasada
+                break;
+            }
+        } else { i += 1; }
+    }
+}
+```
+
+→ **NO es busy-wait** (tarea periódica): cada pasada *procesa* los ítems vencidos; no se queda mirando una condición sin hacer nada.
+
+Contraejemplo mínimo de busy-wait «caliente»: `loop { if *flag.lock().unwrap() { break; } }` — spin sin sleep ni trabajo, 100% CPU.
 
 Ver la regla completa en [§10](#correccion).
 

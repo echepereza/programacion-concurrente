@@ -264,7 +264,51 @@ loop {
           <li><strong>Preferencia de escritores (writer preference):</strong> si hay un escritor esperando, los nuevos lectores esperan → puede hambrear lectores.</li>
           <li><strong>Fair:</strong> se respeta un orden (p. ej. FIFO) para que ninguno se muera de hambre.</li>
         </ul>
-        <div class="callout blue">Es exactamente lo que ofrece <code>RwLock</code> (capítulo 09): <code>read()</code> = lock compartido, <code>write()</code> = lock exclusivo. La política de preferencia depende del SO.</div>
+        <div class="callout blue">Es exactamente lo que ofrece <code>RwLock</code> (<a href="#locks">§11</a>): <code>read()</code> = lock compartido, <code>write()</code> = lock exclusivo. La política de preferencia depende del SO.</div>
+
+        <h4>Implementación <em>fair</em> con cola de turnos (ticket FIFO)</h4>
+        <p>El truco: cada thread «saca número» al llegar y se atiende en orden. El <strong>lector</strong>, al entrar, <em>avanza</em> el turno (deja pasar al siguiente ticket: si es otro lector, entra en paralelo); el <strong>escritor</strong> <em>no</em> avanza el turno hasta terminar, bloqueando a todos los que están detrás. Así ninguno se muere de hambre.</p>
+        <pre data-code="rust">use std::sync::{Mutex, Condvar};
+
+struct Estado { proximo: u64, turno: u64, lectores: u32, escribiendo: bool }
+struct FairRw { m: Mutex<Estado>, cv: Condvar }
+
+impl FairRw {
+    fn new() -> Self {
+        FairRw { m: Mutex::new(Estado { proximo: 0, turno: 0, lectores: 0, escribiendo: false }),
+                 cv: Condvar::new() }
+    }
+
+    fn read_lock(&self) {
+        let mut s = self.m.lock().unwrap();
+        let mi = s.proximo; s.proximo += 1;                    // saco número (FIFO)
+        while s.turno != mi { s = self.cv.wait(s).unwrap(); }  // espero mi turno
+        s.lectores += 1;
+        s.turno += 1;                                          // AVANZO: entra el siguiente ticket
+        self.cv.notify_all();                                  // (si es lector, lee en paralelo)
+    }
+    fn read_unlock(&self) {
+        let mut s = self.m.lock().unwrap();
+        s.lectores -= 1;
+        if s.lectores == 0 { self.cv.notify_all(); }           // último lector: destraba al escritor
+    }
+
+    fn write_lock(&self) {
+        let mut s = self.m.lock().unwrap();
+        let mi = s.proximo; s.proximo += 1;
+        while s.turno != mi { s = self.cv.wait(s).unwrap(); }          // mi turno (FIFO)
+        while s.lectores > 0 { s = self.cv.wait(s).unwrap(); }         // espero que drenen los lectores
+        s.escribiendo = true;
+        // OJO: NO avanzo el turno -> los de atrás quedan bloqueados mientras escribo (exclusivo)
+    }
+    fn write_unlock(&self) {
+        let mut s = self.m.lock().unwrap();
+        s.escribiendo = false;
+        s.turno += 1;                                          // recién ahora dejo pasar al siguiente
+        self.cv.notify_all();
+    }
+}</pre>
+        <div class="callout"><strong>Por qué es <em>fair</em>:</strong> los turnos se sirven en orden de llegada (FIFO), así que ni lectores ni escritores se postergan para siempre. Los lectores <em>consecutivos</em> se agrupan (cada uno avanza el turno e ingresa el siguiente), pero apenas hay un escritor en la cola, los lectores que llegan <em>después</em> sacan un número mayor y esperan su turno → el escritor no se muere de hambre. Cuando el escritor llega a su turno, espera a que <em>drenen</em> los lectores que ya estaban (<code>lectores == 0</code>) y recién ahí escribe en exclusiva.</div>
 
         <details>
           <summary>Matices de clase (para no perder puntos)</summary>
