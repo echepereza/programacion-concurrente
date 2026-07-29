@@ -3,9 +3,9 @@
 [Abrir apunte](index.html)
 
 
-**El mínimo indispensable para aprobar un final. Sin chamuyo.** Definiciones concisas, comparaciones y esquemas de lo que *siempre* cae. Cuando algo no te cierre, abrí el apunte completo.
+**El mínimo indispensable para aprobar un final. Sin chamuyo.** Definiciones concisas, comparaciones y esquemas de lo que *siempre* cae. Cuando algo no te cierre, abrí el apunte completo (o tocá cualquier tema en el índice).
 
-[← Abrir apunte completo](index.html) &nbsp;·&nbsp; [Ver resumen extendido](resumen.html)
+[← Volver al apunte completo](index.html)
 
 Cómo es el final (patrón real de la cátedra).
 

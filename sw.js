@@ -1,10 +1,7 @@
-const CACHE_NAME = 'programacion-concurrente-v7';
+const CACHE_NAME = 'programacion-concurrente-v8';
 const APP_SHELL = [
   './',
   './index.html',
-  './resumen.html',
-  './resumen.md',
-  './resumen-analitico.html',
   './repaso-final.html',
   './repaso-final.md',
   './manifest.webmanifest',

@@ -81,18 +81,16 @@ oscuro, offline) con contenido y diseño propios.
   # abrir http://localhost:8000/
   ```
 
-- **Imprimir / guardar PDF:** `resumen.html` (o el botón «PDF» dentro de la app).
+- **Imprimir / guardar PDF:** botón «PDF» dentro de la app (funciona igual en el apunte y en el repaso final).
+- **Repaso final:** botón «Repaso final» de la barra lateral. Es otra página (`repaso-final.html`) con el **mismo armazón** (índice, notas, buscador, tema): intercambia el contenido por el resumen compacto para el final, igual que aprendizaje-automatico alterna entre su Apunte y su Resumen. Desde ahí, «Apunte» vuelve al apunte completo.
 
 ## Estructura del proyecto
 
 ```
 programacion-concurrente/
-├── index.html              # App PWA completa            ← GENERADO por build.py
-├── resumen.html            # Apunte completo standalone  ← GENERADO
-├── resumen.md              # Mirror en Markdown          ← GENERADO
-├── resumen-analitico.html  # Redirección a resumen.html
-├── repaso-final.html       # Repaso compacto para el final ← GENERADO
-├── repaso-final.md         # Mirror en Markdown          ← GENERADO
+├── index.html              # App PWA: apunte completo    ← GENERADO por build.py
+├── repaso-final.html       # App PWA: repaso compacto (mismo shell) ← GENERADO
+├── repaso-final.md         # Mirror del repaso en Markdown ← GENERADO
 │
 ├── content/                # ← LA FUENTE DEL CONTENIDO (acá se edita)
 │   ├── part-00-fundamentos.html          (caps. 01-03)
@@ -110,7 +108,7 @@ programacion-concurrente/
 │   ├── part-06-anexos.html               (anexos A, B, C)
 │   └── repaso-final.html                 (repaso compacto para el final)
 ├── toc.html                # Índice de la barra lateral  ← FUENTE
-├── build.py                # Ensambla index/resumen desde content/ + toc.html
+├── build.py                # Ensambla index.html y repaso-final.html (mismo shell) desde content/ + toc.html
 │
 ├── sw.js                   # Service worker (offline)
 ├── manifest.webmanifest    # Manifiesto PWA
@@ -120,13 +118,15 @@ programacion-concurrente/
 └── README.md
 ```
 
-> **Regla de oro:** `index.html`, `resumen.html`, `resumen.md`, `repaso-final.html` y
-> `repaso-final.md` son **generados**. No los edites a mano: se pisan en el próximo
-> `build.py`. Tocá siempre `content/*.html` y `toc.html`.
+> **Regla de oro:** `index.html`, `repaso-final.html` y `repaso-final.md` son
+> **generados**. No los edites a mano: se pisan en el próximo `build.py`. Tocá siempre
+> `content/*.html` y `toc.html`.
 >
 > El **Repaso final** (`content/repaso-final.html` → `repaso-final.html`) es el resumen
 > compacto y orientado a finales: el mínimo teórico para aprobar, con bullets, tablas y
-> definiciones. Es independiente del apunte (no se concatena con los `part-*.html`).
+> definiciones. Es una página aparte con el mismo shell que el apunte (se navega con los
+> botones «Repaso final» / «Apunte» de la barra lateral) y su fuente es independiente
+> (no se concatena con los `part-*.html`).
 
 ## Cómo hacer cambios
 
@@ -228,7 +228,7 @@ flowchart LR
    <a href="#nuevo-id"><span>NN</span>Título en el índice</a>
    ```
 
-3. `python build.py` y listo. El buscador, el índice y `resumen.md` se actualizan solos.
+3. `python build.py` y listo. El buscador, el índice y el `repaso-final.md` se actualizan solos.
 
 ### Qué hace `build.py`
 
@@ -239,7 +239,9 @@ Es un ensamblador en Python (sin dependencias). En cada corrida:
 2. Le **reemplaza** la paleta de colores, la marca, el índice (`toc.html`) y el contenido
    (concatena `content/part-*.html` en orden).
 3. **Escapa** los bloques `<pre data-code>` e **inyecta** Mermaid.
-4. Genera además `resumen.html` (standalone imprimible) y `resumen.md` (mirror Markdown).
+4. Arma **dos páginas con el mismo shell**: `index.html` (apunte, enlace → «Repaso final») y
+   `repaso-final.html` (repaso compacto, enlace → «Apunte»; en su índice los temas apuntan a
+   `index.html#ancla` para profundizar). Genera también `repaso-final.md` (mirror Markdown).
 
 > Para *rebuildear* necesitás la carpeta hermana `aprendizaje-automatico` (es la plantilla).
 > El `index.html` ya generado **no** la necesita: es autocontenido y se publica solo.

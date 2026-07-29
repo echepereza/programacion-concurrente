@@ -139,6 +139,13 @@ CODE_TOGGLE_BUTTON = """<button class="icon-button wide" id="code-toggle" type="
         <span id="code-toggle-label">Código</span>
       </button>"""
 
+# Enlaces de navegación entre las dos vistas (mismo shell, distinto <main>),
+# igual que aprendizaje-automatico alterna entre Apunte y Resumen.
+NAV_TO_REPASO = ('<a class="icon-button wide" href="repaso-final.html" '
+                 'title="Repaso compacto: el mínimo para el final">Repaso final</a>')
+NAV_TO_APUNTE = ('<a class="icon-button wide" href="index.html" '
+                 'title="Volver al apunte completo">Apunte</a>')
+
 
 def read(path):
     with open(path, encoding='utf-8') as fh:
@@ -172,10 +179,19 @@ def escape_code_blocks(markup):
 
 
 # ---------------------------------------------------------------------------
-# index.html
+# Shell compartido: mismo armazón (índice, notas, buscador, resaltador, tema)
+# para el apunte (index.html) y para el repaso final (repaso-final.html). Solo
+# cambian el contenido del <main> y el enlace de navegación de la barra lateral,
+# tal como aprendizaje-automatico alterna entre su Apunte y su Resumen.
 # ---------------------------------------------------------------------------
-def build_index(template, content_html, toc_html):
+def build_shell(template, content_html, toc_html, nav_link, page_title=None,
+                description=None, toc_link_base=''):
     doc = template
+
+    # En el repaso, los enlaces del índice apuntan al apunte completo
+    # (index.html#ancla) para poder profundizar cada tema desde el pantallazo.
+    if toc_link_base:
+        toc_html = toc_html.replace('href="#', 'href="%s#' % toc_link_base)
 
     # palette
     doc = re.sub(r':root \{[^}]*\}', ROOT_LIGHT, doc, count=1)
@@ -183,8 +199,10 @@ def build_index(template, content_html, toc_html):
 
     # head branding
     doc = doc.replace('content="#167e9e"', 'content="%s"' % ACCENT)
+    desc = description or ('Guía de estudio para el final de Programación Concurrente, '
+                           'FIUBA: teoría, diagramas y finales resueltos.')
     doc = re.sub(r'<meta name="description"[^>]*>',
-                 '<meta name="description" content="Guía de estudio para el final de Programación Concurrente, FIUBA: teoría, diagramas y finales resueltos.">',
+                 '<meta name="description" content="%s">' % desc,
                  doc, count=1)
     doc = re.sub(r'<link rel="icon"[^>]*>',
                  '<link rel="icon" href="pwa-icon.svg" type="image/svg+xml">',
@@ -207,122 +225,25 @@ def build_index(template, content_html, toc_html):
     head, sep, tail = doc.rpartition('</body>')
     doc = head + MERMAID_SCRIPT[:-len('</body>')] + '</body>' + tail
 
-    # botón de toggle de código en la barra lateral
+    # barra lateral: el link "Resumen" del template se reemplaza por el toggle de
+    # código + el enlace a la otra vista (apunte <-> repaso final).
     doc = doc.replace(
         '<a class="icon-button wide" href="resumen.html">Resumen</a>',
-        CODE_TOGGLE_BUTTON + '\n      <a class="icon-button wide" href="resumen.html">Resumen</a>',
-        1)
-
-    # enlace destacado al repaso final (compacto), antes del resumen extendido
-    doc = doc.replace(
-        '<a class="icon-button wide" href="resumen.html">Resumen</a>',
-        '<a class="icon-button wide" href="repaso-final.html">Repaso final</a>\n      <a class="icon-button wide" href="resumen.html">Resumen</a>',
+        CODE_TOGGLE_BUTTON + '\n      ' + nav_link,
         1)
 
     # brand text everywhere
     doc = doc.replace('Aprendizaje Automático', 'Programación Concurrente')
+
+    # título de la pestaña (opcional; por defecto queda el del apunte)
+    if page_title:
+        doc = re.sub(r'<title>[^<]*</title>', '<title>%s</title>' % page_title, doc, count=1)
     return doc
 
 
 # ---------------------------------------------------------------------------
-# resumen.html (standalone)
-# ---------------------------------------------------------------------------
-RESUMEN_TEMPLATE = """<!doctype html>
-<html lang="es" data-theme="light">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Resumen imprimible de Programación Concurrente, FIUBA.">
-  <link rel="icon" href="pwa-icon.svg" type="image/svg+xml">
-  <title>Resumen | Programación Concurrente</title>
-  <style>
-    :root {{
-      --bg:#f7f5f2; --surface:#fff; --surface-2:#f1ece5; --ink:#221a13; --muted:#6d6154;
-      --line:#e4dccf; --accent:#c2410c; --accent-2:#fbe7d6; --accent-ink:#9a3412;
-      --warm:#9b5f1d; --warm-bg:#fbe4c9; --danger:#a23b3b; --danger-bg:#fbe3e0;
-      --blue:#3f5bb2; --blue-bg:#e7ecfb;
-    }}
-    * {{ box-sizing:border-box; }}
-    body {{ margin:0; background:var(--bg); color:var(--ink);
-      font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
-      font-size:16px; line-height:1.68; }}
-    .content {{ width:min(880px, calc(100% - 40px)); margin:0 auto; padding:40px 0 90px; }}
-    .hero {{ padding:30px; border:1px solid var(--line); border-radius:24px; background:var(--surface); margin-bottom:20px; }}
-    h1 {{ font-size:clamp(34px,6vw,60px); line-height:1; letter-spacing:-.04em; margin:0; }}
-    h2 {{ font-size:clamp(26px,4vw,38px); line-height:1.1; letter-spacing:-.03em; margin:44px 0 6px; padding-top:18px; border-top:1px solid var(--line); }}
-    h3 {{ font-size:21px; margin:28px 0 10px; }}
-    h4 {{ font-size:16px; margin:20px 0 8px; }}
-    p {{ margin:0 0 13px; }}
-    ul,ol {{ padding-left:22px; }} li {{ margin:6px 0; }}
-    a {{ color:var(--accent-ink); }}
-    code {{ font-family:"SFMono-Regular",Consolas,monospace; font-size:.9em; }}
-    pre.code {{ margin:14px 0; padding:14px 16px; overflow-x:auto; border:1px solid var(--line);
-      border-radius:12px; background:var(--surface-2); font-size:13px; line-height:1.5; }}
-    pre.code code {{ background:transparent; }}
-    .chapter-number {{ display:inline-block; color:var(--accent); font-weight:800; }}
-    table {{ width:100%; border-collapse:collapse; margin:16px 0; font-size:14px; background:var(--surface); }}
-    th,td {{ padding:10px 12px; border:1px solid var(--line); text-align:left; vertical-align:top; }}
-    th {{ background:var(--surface-2); }}
-    .callout {{ margin:16px 0; padding:14px 18px; border-left:4px solid var(--accent);
-      border-radius:0 12px 12px 0; background:var(--accent-2); color:var(--accent-ink); }}
-    .callout.warning {{ border-color:var(--warm); background:var(--warm-bg); color:var(--warm); }}
-    .callout.danger {{ border-color:var(--danger); background:var(--danger-bg); color:var(--danger); }}
-    .callout.blue {{ border-color:var(--blue); background:var(--blue-bg); color:var(--blue); }}
-    .exam-answer {{ margin:16px 0; padding:14px 18px; border-left:4px solid var(--accent);
-      border-radius:0 12px 12px 0; background:var(--accent-2); color:var(--accent-ink); }}
-    .tag {{ display:inline-block; padding:3px 9px; border-radius:999px; background:var(--accent-2);
-      color:var(--accent-ink); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }}
-    .tag.warm {{ background:var(--warm-bg); color:var(--warm); }}
-    .tag.blue {{ background:var(--blue-bg); color:var(--blue); }}
-    .tag.red {{ background:var(--danger-bg); color:var(--danger); }}
-    .diagram {{ margin:20px 0; padding:16px 14px 10px; overflow-x:auto; border:1px solid var(--line);
-      border-radius:16px; background:#fbfaf8; }}
-    .diagram .mermaid {{ display:flex; justify-content:center; }}
-    .diagram figcaption {{ margin-top:8px; color:#5a4d40; font-size:12.5px; text-align:center; }}
-    details {{ margin:10px 0; border:1px solid var(--line); border-radius:12px; padding:6px 14px; background:var(--surface); }}
-    summary {{ cursor:pointer; font-weight:650; }}
-    .chapter {{ scroll-margin-top:12px; }}
-    @media print {{ .hero {{ border:0; }} h2 {{ break-before:auto; }} pre.code,.diagram {{ break-inside:avoid; }} }}
-  </style>
-</head>
-<body>
-  <main class="content" id="content">
-{content}
-  </main>
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({{ startOnLoad:true, securityLevel:'loose', theme:'base',
-      themeVariables:{{ background:'#fbfaf8', primaryColor:'#fdecdf', primaryBorderColor:'#c2410c',
-        primaryTextColor:'#1a130d', secondaryColor:'#e7ecfb', lineColor:'#8a7a6b',
-        fontFamily:'Inter, system-ui, sans-serif', fontSize:'15px' }},
-      flowchart:{{ htmlLabels:true, curve:'basis' }} }});
-  </script>
-</body>
-</html>
-"""
-
-
-def build_resumen_html(content_html):
-    return RESUMEN_TEMPLATE.format(content=content_html)
-
-
-# ---------------------------------------------------------------------------
-# repaso-final.html  (repaso compacto, mínimo para el final)
-# Reutiliza el mismo shell standalone que resumen.html, cambiando la marca.
-# ---------------------------------------------------------------------------
-def build_repaso_html(content_html):
-    doc = RESUMEN_TEMPLATE.format(content=content_html)
-    doc = doc.replace(
-        '<meta name="description" content="Resumen imprimible de Programación Concurrente, FIUBA.">',
-        '<meta name="description" content="Repaso final de Programación Concurrente, FIUBA: el mínimo teórico para aprobar un final.">')
-    doc = doc.replace(
-        '<title>Resumen | Programación Concurrente</title>',
-        '<title>Repaso final | Programación Concurrente</title>')
-    return doc
-
-
-# ---------------------------------------------------------------------------
-# resumen.md  (exportador HTML -> Markdown, con placeholders para code/mermaid)
+# Exportador HTML -> Markdown, con placeholders para code/mermaid
+# (genera repaso-final.md, mirror portable del repaso).
 # ---------------------------------------------------------------------------
 class El:
     __slots__ = ('tag', 'attrs', 'children')
@@ -562,25 +483,27 @@ def main():
     toc_html = read(os.path.join(HERE, 'toc.html'))
 
     content_html = escape_code_blocks(raw_content)
+    raw_repaso = read(os.path.join(HERE, 'content', 'repaso-final.html'))
+    repaso_content = escape_code_blocks(raw_repaso)
 
-    index = build_index(template, content_html, toc_html)
+    # Apunte completo (index.html): enlace de barra lateral -> Repaso final.
+    index = build_shell(template, content_html, toc_html, NAV_TO_REPASO)
     write(os.path.join(HERE, 'index.html'), index)
 
-    resumen_html = build_resumen_html(content_html)
-    write(os.path.join(HERE, 'resumen.html'), resumen_html)
+    # Repaso final (repaso-final.html): MISMO shell, otro <main>, enlace -> Apunte.
+    repaso = build_shell(template, repaso_content, toc_html, NAV_TO_APUNTE,
+                         page_title='Repaso final | Programación Concurrente',
+                         description='Repaso final de Programación Concurrente, FIUBA: '
+                                     'el mínimo teórico para aprobar un final.',
+                         toc_link_base='index.html')
+    write(os.path.join(HERE, 'repaso-final.html'), repaso)
 
-    md = build_markdown(raw_content)
-    write(os.path.join(HERE, 'resumen.md'), md)
-
-    # Repaso final (compacto) -> repaso-final.html + repaso-final.md
-    raw_repaso = read(os.path.join(HERE, 'content', 'repaso-final.html'))
-    repaso_html = build_repaso_html(escape_code_blocks(raw_repaso))
-    write(os.path.join(HERE, 'repaso-final.html'), repaso_html)
+    # Mirror portable en Markdown del repaso.
     write(os.path.join(HERE, 'repaso-final.md'), build_markdown(raw_repaso))
 
     words = len(re.sub(r'<[^>]+>', ' ', content_html).split())
     rwords = len(re.sub(r'<[^>]+>', ' ', raw_repaso).split())
-    print('OK  index.html + resumen.html + resumen.md + repaso-final.html + repaso-final.md')
+    print('OK  index.html + repaso-final.html + repaso-final.md')
     print('    ~%d palabras de apunte, ~%d palabras de repaso final' % (words, rwords))
 
 
