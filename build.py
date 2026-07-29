@@ -213,6 +213,12 @@ def build_index(template, content_html, toc_html):
         CODE_TOGGLE_BUTTON + '\n      <a class="icon-button wide" href="resumen.html">Resumen</a>',
         1)
 
+    # enlace destacado al repaso final (compacto), antes del resumen extendido
+    doc = doc.replace(
+        '<a class="icon-button wide" href="resumen.html">Resumen</a>',
+        '<a class="icon-button wide" href="repaso-final.html">Repaso final</a>\n      <a class="icon-button wide" href="resumen.html">Resumen</a>',
+        1)
+
     # brand text everywhere
     doc = doc.replace('Aprendizaje Automático', 'Programación Concurrente')
     return doc
@@ -298,6 +304,21 @@ RESUMEN_TEMPLATE = """<!doctype html>
 
 def build_resumen_html(content_html):
     return RESUMEN_TEMPLATE.format(content=content_html)
+
+
+# ---------------------------------------------------------------------------
+# repaso-final.html  (repaso compacto, mínimo para el final)
+# Reutiliza el mismo shell standalone que resumen.html, cambiando la marca.
+# ---------------------------------------------------------------------------
+def build_repaso_html(content_html):
+    doc = RESUMEN_TEMPLATE.format(content=content_html)
+    doc = doc.replace(
+        '<meta name="description" content="Resumen imprimible de Programación Concurrente, FIUBA.">',
+        '<meta name="description" content="Repaso final de Programación Concurrente, FIUBA: el mínimo teórico para aprobar un final.">')
+    doc = doc.replace(
+        '<title>Resumen | Programación Concurrente</title>',
+        '<title>Repaso final | Programación Concurrente</title>')
+    return doc
 
 
 # ---------------------------------------------------------------------------
@@ -551,9 +572,16 @@ def main():
     md = build_markdown(raw_content)
     write(os.path.join(HERE, 'resumen.md'), md)
 
+    # Repaso final (compacto) -> repaso-final.html + repaso-final.md
+    raw_repaso = read(os.path.join(HERE, 'content', 'repaso-final.html'))
+    repaso_html = build_repaso_html(escape_code_blocks(raw_repaso))
+    write(os.path.join(HERE, 'repaso-final.html'), repaso_html)
+    write(os.path.join(HERE, 'repaso-final.md'), build_markdown(raw_repaso))
+
     words = len(re.sub(r'<[^>]+>', ' ', content_html).split())
-    print('OK  index.html + resumen.html + resumen.md')
-    print('    ~%d palabras de contenido' % words)
+    rwords = len(re.sub(r'<[^>]+>', ' ', raw_repaso).split())
+    print('OK  index.html + resumen.html + resumen.md + repaso-final.html + repaso-final.md')
+    print('    ~%d palabras de apunte, ~%d palabras de repaso final' % (words, rwords))
 
 
 if __name__ == '__main__':

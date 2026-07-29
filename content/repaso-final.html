@@ -1,0 +1,317 @@
+      <section class="hero">
+        <h1>Repaso final</h1>
+        <p><strong>El mínimo indispensable para aprobar un final. Sin chamuyo.</strong> Definiciones concisas, comparaciones y esquemas de lo que <em>siempre</em> cae. Cuando algo no te cierre, abrí el apunte completo.</p>
+        <p><a href="index.html">← Abrir apunte completo</a> &nbsp;·&nbsp; <a href="resumen.html">Ver resumen extendido</a></p>
+      </section>
+
+      <div class="callout blue">
+        <strong>Cómo es el final (patrón real de la cátedra).</strong> 5 ejercicios, casi todo <strong>teoría + un diseño</strong>. No hay que codear parciales: hay que <em>explicar, comparar y justificar</em>. Los temas rotan pero el molde es fijo:
+        <ol>
+          <li><strong>Redes de Petri:</strong> definir ordinaria vs general, marca, disparo, grafo de alcance, y <em>modelar</em> un sistema.</li>
+          <li><strong>Sincronización teórica:</strong> sección crítica y corrección; monitores vs semáforos; busy-wait/deadlock/race/starvation; o actores (motivación, características, ciclo de vida).</li>
+          <li><strong>Transacciones / Redes:</strong> 2PC, concurrencia optimista, 2PL, timestamps; o modelo OSI, sockets, TCP vs UDP.</li>
+          <li><strong>Ambientes distribuidos:</strong> entidad y capacidades, acción/regla/comportamiento, conocimiento, costo y complejidad, elección de líder.</li>
+          <li><strong>Diseño de un sistema:</strong> proponer transaccionalidad, diagrama de entidades y mensajes, casos de éxito/falla y pseudocódigo Rust (actores).</li>
+        </ol>
+        <strong>Estrategia:</strong> respondé con la <em>definición exacta</em> primero, después el ejemplo/diagrama, y cerrá con el trade-off. Los puntos se ganan en las palabras precisas, no en la extensión.
+      </div>
+
+      <h2>1 · Corrección: safety, liveness y los cuatro fantasmas</h2>
+      <p><strong>Concurrencia</strong> = varias tareas <em>progresan</em> en simultáneo (intercaladas); <strong>paralelismo</strong> = varias se <em>ejecutan</em> a la vez (varios cores). La salida de un programa concurrente <strong>correcto</strong> es siempre la misma; lo que varía es el <em>interleaving</em>, no el resultado.</p>
+      <ul>
+        <li><strong>Programa modelo:</strong> cada proceso es un ciclo infinito dividido en <strong>sección crítica</strong> (accede a recursos compartidos) y sección no-crítica.</li>
+        <li><strong>Safety</strong> («algo malo <em>nunca</em> pasa», siempre verdadera): exclusión mutua y ausencia de deadlock.</li>
+        <li><strong>Liveness</strong> («algo bueno <em>eventualmente</em> pasa»): ausencia de starvation y fairness.</li>
+      </ul>
+      <p><strong>Corrección de la sección crítica</strong> (3 especificaciones):</p>
+      <ul>
+        <li><strong>Exclusión mutua:</strong> las instrucciones de la SC no se intercalan.</li>
+        <li><strong>Ausencia de deadlock:</strong> si dos intentan entrar, eventualmente uno entra.</li>
+        <li><strong>Ausencia de starvation:</strong> si uno intenta entrar, eventualmente lo logra.</li>
+      </ul>
+      <p><strong>Por qué importa la corrección:</strong> el programa concurrente no es determinístico (la salida depende del escenario), así que no alcanza con debuggear como en secuencial; hay que <em>demostrar</em> propiedades.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fantasma</th><th>Qué es</th><th>Clave para distinguirlo</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Busy-wait</strong> (espera activa)</td><td>Gira en un loop <em>chequeando una condición</em> y quema CPU sin trabajo útil.</td><td>¿Consume CPU inútilmente? El <code>sleep</code> <strong>no</strong> lo salva: poll-ear la condición sigue siendo espera activa. Se arregla bloqueándose (semáforo/condvar).</td></tr>
+            <tr><td><strong>Race condition</strong></td><td>El resultado depende del <em>timing</em> de accesos no sincronizados a estado compartido.</td><td>¿El resultado depende del orden? Puede dar bien por casualidad y mal en otra corrida. Se arregla serializando (lock/actor).</td></tr>
+            <tr><td><strong>Deadlock</strong></td><td>Dos o más procesos esperan por un recurso que el otro tiene → dependencia cíclica; <em>nadie</em> avanza.</td><td>¿Todos trabados esperándose? Falla global. Requiere intervención externa.</td></tr>
+            <tr><td><strong>Starvation</strong></td><td>Un proceso listo <em>nunca</em> obtiene el recurso porque otros lo acaparan.</td><td>¿Uno postergado para siempre mientras el resto avanza? El sistema <em>sí</em> progresa (falla individual).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p><strong>Deadlock — 4 condiciones de Coffman</strong> (deben darse las cuatro juntas; basta romper una para prevenirlo): <strong>exclusión mutua</strong>, <strong>hold &amp; wait</strong> (retener y esperar), <strong>no preemption</strong> (no expropiación) y <strong>espera circular</strong>. Estrategias: <em>prevención</em> (negar una condición), <em>evitación</em> (banquero), <em>detección + recuperación</em> (grafo de recursos + abortar), <em>avestruz</em> (ignorarlo).</p>
+
+      <h2>2 · Rust para concurrencia, en diez líneas</h2>
+      <ul>
+        <li><strong>Ownership:</strong> cada valor tiene un dueño; al salir de scope se libera (<code>drop</code>).</li>
+        <li><strong>Borrowing:</strong> o <em>una</em> referencia mutable, o <em>N</em> compartidas inmutables — nunca las dos. Esto elimina data races <em>en tiempo de compilación</em> («fearless concurrency»).</li>
+        <li><strong>Send:</strong> el tipo se puede <em>mover</em> a otro thread. <strong>Sync:</strong> se puede <em>compartir por referencia</em> (<code>&amp;T</code> es Send).</li>
+      </ul>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tipo</th><th>Para qué</th></tr></thead>
+          <tbody>
+            <tr><td><code>Box&lt;T&gt;</code></td><td>Un dueño, dato en el heap (recursión, trait objects).</td></tr>
+            <tr><td><code>Rc&lt;T&gt;</code></td><td>Varios dueños, <strong>un solo thread</strong> (conteo no atómico).</td></tr>
+            <tr><td><code>Arc&lt;T&gt;</code></td><td>Varios dueños <strong>entre threads</strong> (conteo atómico). Solo lectura.</td></tr>
+            <tr><td><code>Arc&lt;Mutex&lt;T&gt;&gt;</code></td><td>Compartir <em>y mutar</em> entre threads con exclusión mutua.</td></tr>
+            <tr><td><code>Arc&lt;RwLock&lt;T&gt;&gt;</code></td><td>Muchos lectores <em>o</em> un escritor.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>3 · Modelos de concurrencia: cuándo uso cada uno</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Modelo</th><th>Idea</th><th>Cuándo</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Fork-join</strong></td><td>Dividir recursivamente en subtareas independientes, resolver en paralelo y combinar.</td><td>Cómputo CPU-bound divisible (map/reduce, ordenar, sumar).</td></tr>
+            <tr><td><strong>Async / futures</strong></td><td>Tareas que ceden el thread mientras esperan; un executor las multiplexa.</td><td>I/O-bound: muchas conexiones/requests concurrentes.</td></tr>
+            <tr><td><strong>Threads + locks</strong></td><td>Memoria compartida protegida con mutex/rwlock.</td><td>Estado compartido acotado, control fino.</td></tr>
+            <tr><td><strong>Mensajes / canales</strong></td><td>Comunicar copiando datos por un canal (mpsc), sin memoria compartida.</td><td>Pipelines productor-consumidor; «no comuniques compartiendo, compartí comunicando».</td></tr>
+            <tr><td><strong>Actores</strong></td><td>Objetos con estado privado que solo se comunican por mensajes; procesan uno a la vez.</td><td>Estado mutable distribuido sin locks; simulaciones, sistemas reactivos.</td></tr>
+            <tr><td><strong>SIMD / GPU</strong></td><td>Una instrucción sobre muchos datos (data-parallel).</td><td>Throughput masivo homogéneo (imágenes, álgebra, ML).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Fork-join y work-stealing (cae textual)</h3>
+      <ul>
+        <li><strong>Ventajas:</strong> sin condiciones de carrera, determinístico, no comparte memoria (threads aislados). <strong>Requiere</strong> tareas independientes.</li>
+        <li><strong>Rendimiento ideal:</strong> tiempo secuencial / nº de threads (menos overhead de división y combinación).</li>
+        <li><strong>Work-stealing:</strong> cada thread tiene una <em>deque</em>; saca y encola tareas por su propio extremo; si se queda sin trabajo, <strong>roba del otro extremo</strong> de la cola de otro thread (elegido al azar).</li>
+        <li><strong>Por qué NO una sola cola:</strong> sería estado mutable compartido → exige exclusión mutua; un thread que genera muchas subtareas retiene el lock mientras encola y frena a los demás → latencia y cuello de botella.</li>
+      </ul>
+
+      <h3>Actores (motivación + ciclo de vida en Actix)</h3>
+      <ul>
+        <li><strong>Motivación:</strong> encapsular estado mutable <em>sin locks</em>: como cada actor procesa un mensaje por vez, su estado nunca sufre data races.</li>
+        <li><strong>Características:</strong> dirección (<code>Addr</code>), <em>mailbox</em>, procesa mensajes de a uno, no comparte estado, se comunica solo por mensajes.</li>
+        <li><strong>Ciclo de vida:</strong> <code>Started → Running → Stopping → Stopped</code> (desde Stopping puede volver a Running).</li>
+        <li><strong>Envío:</strong> <code>do_send</code> (fire-and-forget, no espera respuesta) vs <code>send</code> (devuelve un future con la respuesta). <strong>SyncArbiter</strong> = pool de actores del mismo tipo para trabajo bloqueante.</li>
+      </ul>
+      <p><strong>Async:</strong> un <code>Future</code> es una máquina de estados que se avanza con <code>poll</code> (devuelve <code>Pending</code> o <code>Ready</code>); el <em>executor</em> reanuda la tarea cuando el recurso está listo, sin bloquear el thread. No «comprime el stack»: la memoria de la tarea sigue viva.</p>
+
+      <h2>4 · Sincronización: mecanismos</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Mecanismo</th><th>Qué garantiza</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Mutex</strong></td><td>Un solo thread en la SC a la vez.</td></tr>
+            <tr><td><strong>RwLock</strong></td><td>N lectores <em>o</em> 1 escritor.</td></tr>
+            <tr><td><strong>Semáforo</strong></td><td>Contador de permisos: <code>wait/P</code> (decrementa o bloquea), <code>signal/V</code> (incrementa o despierta). Binario = mutex; contador = N recursos.</td></tr>
+            <tr><td><strong>Barrera</strong></td><td>Todos los threads esperan hasta que <em>todos</em> llegan al punto.</td></tr>
+            <tr><td><strong>Condvar</strong></td><td>Bloquearse hasta que se cumpla una condición; siempre dentro de un <code>while</code> (por <em>spurious wakeups</em>).</td></tr>
+            <tr><td><strong>Monitor</strong></td><td>Exclusión mutua + variables de condición, todo encapsulado en un objeto.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Monitor vs Semáforo (comparación de final)</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Aspecto</th><th>Semáforo</th><th>Monitor</th></tr></thead>
+          <tbody>
+            <tr><td>¿<code>wait</code> bloquea?</td><td>No siempre (si V &gt; 0 no bloquea)</td><td><code>waitC</code> <strong>siempre</strong> bloquea</td></tr>
+            <tr><td>¿<code>signal</code> tiene efecto?</td><td>Siempre (incrementa o despierta)</td><td><code>signalC</code> <strong>no</strong> hace nada si la cola está vacía</td></tr>
+            <tr><td>Estructura</td><td>Bajo nivel, disperso; fácil de usar mal</td><td>Alto nivel, encapsula estado + condiciones</td></tr>
+            <tr><td>Tras la señal</td><td>El desbloqueado sigue enseguida</td><td>El desbloqueado espera a que el señalizador deje el monitor</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout"><strong>Implementar un monitor:</strong> mutex para la exclusión mutua + variables de condición (<code>waitC</code> libera el lock y bloquea; <code>signalC</code> despierta al primero de la cola). En Java: <code>synchronized</code> + <code>wait()</code>/<code>notify()</code>/<code>notifyAll()</code> (hay que tener el monitor adquirido para llamarlos).</div>
+
+      <h2>5 · Problemas clásicos (esencia en una línea)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Problema</th><th>Qué ilustra</th><th>Solución típica</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Productor-consumidor</strong> (buffer acotado)</td><td>Coordinar producción/consumo sin desbordar ni vaciar de más.</td><td>Semáforos <code>notFull</code> (=N) y <code>notEmpty</code> (=0) + mutex del buffer.</td></tr>
+            <tr><td><strong>Lectores-escritores</strong></td><td>Concurrencia de lecturas vs exclusividad de escritura + fairness.</td><td>RwLock; versión <em>fair</em> con cola para que el escritor no muera de hambre.</td></tr>
+            <tr><td><strong>Filósofos comensales</strong></td><td>Deadlock por espera circular; starvation por injusticia.</td><td>Ordenar recursos, o Chandy-Misra (prioridad acíclica con palitos limpios/sucios).</td></tr>
+            <tr><td><strong>Barbero dormilón</strong></td><td>Sincronizar un servidor que duerme cuando no hay trabajo.</td><td>Semáforos de clientes/barbero + mutex de la sala de espera.</td></tr>
+            <tr><td><strong>Fumadores</strong></td><td>Límite de los semáforos «pelados»; hace falta un intermediario.</td><td>Agente + <em>pushers</em> que combinan los ingredientes.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>6 · Redes de Petri</h2>
+      <p>Herramienta <strong>gráfica y matemática</strong> para modelar sistemas concurrentes; es un <strong>grafo dirigido bipartito</strong> con dos tipos de nodos.</p>
+      <ul>
+        <li><strong>Lugares</strong> (círculos) = estados/condiciones; contienen <strong>tokens</strong>. <strong>Transiciones</strong> (barras) = eventos. <strong>Arcos</strong> conectan lugar↔transición (nunca dos del mismo tipo).</li>
+        <li><strong>Red ordinaria</strong> <code>PN = (T, P, A)</code>: transiciones, lugares y arcos.</li>
+        <li><strong>Red general</strong> <code>PN = (T, P, A, W, M0)</code>: agrega <strong>pesos</strong> <code>W</code> (tokens por arco) y <strong>marca inicial</strong> <code>M0</code>.</li>
+        <li><strong>Funciones de entrada/salida:</strong> <code>I(t)</code> = lugares de entrada de <code>t</code> (los que consume); <code>O(t)</code> = lugares de salida (los que produce).</li>
+        <li><strong>Marca</strong> <code>M</code>: tokens por lugar = estado actual del sistema.</li>
+        <li><strong>Regla de disparo:</strong> <code>t</code> está <em>habilitada</em> si cada lugar de entrada <code>p</code> cumple <code>M(p) ≥ W(p,t)</code>. Al dispararse consume <code>W(p,t)</code> de cada entrada y produce <code>W(t,p')</code> en cada salida.</li>
+        <li><strong>Grafo de alcance:</strong> nodos = marcas alcanzables desde <code>M0</code>; arcos = transición que lleva de una marca a otra. Representa todos los estados posibles.</li>
+      </ul>
+      <p><strong>Propiedades que se preguntan:</strong> <em>alcanzabilidad</em> (¿se llega a M?), <em>acotada/segura</em> (nº de tokens por lugar acotado / ≤1), <em>viva</em> (ninguna transición queda muerta → sin deadlock), <em>invariantes de plaza</em> (suma de tokens que se conserva, p. ej. <code>P2 + P4 = 3</code>).</p>
+      <div class="callout"><strong>Red general vs ordinaria:</strong> los pesos permiten modelar <em>consumir/producir K tokens de golpe</em> (batch, umbrales, N recursos). Lo que <strong>ninguna</strong> P/T puede es «testear por cero» (actuar <em>porque</em> un lugar está vacío); para eso hacen falta <strong>arcos inhibidores</strong>, que vuelven la red <strong>Turing-completa</strong>.</div>
+      <figure class="diagram">
+        <div class="mermaid">
+flowchart LR
+    NF(("notFull = N")) --> PR["producir"]
+    PR --> BUF(("buffer = 0"))
+    BUF --> CO["consumir"]
+    CO --> NF
+        </div>
+        <figcaption>Productor-consumidor acotado: <code>producir</code> consume de <code>notFull</code> y deja un token en <code>buffer</code>; <code>consumir</code> consume de <code>buffer</code> y devuelve a <code>notFull</code>. Nunca hay más de N ítems.</figcaption>
+      </figure>
+
+      <h2>7 · Transacciones y control de concurrencia</h2>
+      <p><strong>ACID:</strong> <em>Atomicidad</em> (todo o nada), <em>Consistencia</em> (de un estado válido a otro), <em>Isolation/aislamiento</em> (como si fueran seriales), <em>Durabilidad</em> (una vez commit, persiste).</p>
+      <p><strong>Control de concurrencia</strong> = garantizar el aislamiento cuando varias transacciones corren a la vez (que el resultado sea <em>serializable</em>). Dos filosofías:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Técnica</th><th>Idea</th><th>Cuándo conviene</th></tr></thead>
+          <tbody>
+            <tr><td><strong>2PL</strong> (pesimista)</td><td>Fase de <em>crecimiento</em> (solo toma locks) y de <em>decrecimiento</em> (solo libera). El estricto libera todo al commit.</td><td>Alta contención (muchos conflictos escritura/escritura).</td></tr>
+            <tr><td><strong>Timestamp ordering</strong></td><td>Cada transacción recibe un timestamp; los accesos se ordenan por él, aborta quien llega «tarde».</td><td>Evitar deadlocks; orden total sin locks.</td></tr>
+            <tr><td><strong>Concurrencia optimista</strong></td><td>3 fases: <em>read</em> (trabaja en copia), <em>validate</em> (chequea conflictos), <em>write</em> (aplica o aborta).</td><td>Baja contención: mucha lectura, pocos conflictos.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>Commit en dos fases (2PC)</h3>
+      <ul>
+        <li><strong>Roles:</strong> un <strong>coordinador</strong> y varios <strong>participantes</strong>, cada uno con su transacción local ACID.</li>
+        <li><strong>Fase 1 (PREPARE/voto):</strong> el coordinador pregunta; cada participante hace log READY y vota <code>COMMIT</code> o <code>ABORT</code>.</li>
+        <li><strong>Fase 2 (decisión):</strong> si <em>todos</em> votaron COMMIT → <code>GLOBAL_COMMIT</code>; si <em>alguno</em> votó ABORT → <code>GLOBAL_ABORT</code>. Participantes aplican y mandan ACK.</li>
+        <li><strong>Ventaja:</strong> atomicidad distribuida. <strong>Desventaja:</strong> es <strong>bloqueante</strong> y el coordinador es un <em>punto único de falla</em>: si cae entre el voto y la decisión, los participantes que votaron READY quedan <em>in-doubt</em> bloqueados hasta que vuelva.</li>
+      </ul>
+      <figure class="diagram">
+        <div class="mermaid">
+sequenceDiagram
+    participant C as Coordinador
+    participant A as Participante A
+    participant B as Participante B
+    C->>A: PREPARE
+    C->>B: PREPARE
+    A-->>C: VOTE_COMMIT
+    B-->>C: VOTE_COMMIT
+    Note over C: todos votaron COMMIT
+    C->>A: GLOBAL_COMMIT
+    C->>B: GLOBAL_COMMIT
+    A-->>C: ACK
+    B-->>C: ACK
+        </div>
+        <figcaption>Camino feliz del 2PC. Si en la fase 1 alguien vota ABORT, la fase 2 es GLOBAL_ABORT para todos.</figcaption>
+      </figure>
+      <h3>Prevención de deadlocks distribuidos (por timestamp)</h3>
+      <ul>
+        <li><strong>Wait-Die:</strong> si el que pide es <em>más viejo</em> que el que tiene el recurso, <strong>espera</strong>; si es más joven, <strong>aborta</strong> (se sacrifica el joven). No preemptivo.</li>
+        <li><strong>Wound-Wait:</strong> si el que pide es <em>más viejo</em>, <strong>desaloja</strong> al joven que lo tiene; si es más joven, <strong>espera</strong>. Preemptivo, menos aborts.</li>
+        <li>Ambos rompen la <strong>espera circular</strong> permitiendo esperar en una sola dirección del tiempo.</li>
+      </ul>
+
+      <h2>8 · Ambientes distribuidos</h2>
+      <p>Múltiples <strong>entidades</strong> separadas espacialmente que se comunican <strong>solo por mensajes</strong> (sin memoria compartida). Es el modelo formal para razonar algoritmos distribuidos.</p>
+      <ul>
+        <li><strong>Entidad</strong> = unidad de cómputo. <strong>Capacidades:</strong> memoria local no compartida (registros <code>status</code>/<code>value</code>), procesamiento local, interfaz de comunicación y reloj local.</li>
+        <li>Es <strong>reactiva</strong>: solo responde a <strong>eventos</strong> = llegada de mensaje, activación de un temporizador local, o <strong>impulso espontáneo</strong> (se dispara a sí misma; sirve para iniciar actividad autónoma).</li>
+        <li><strong>Acción:</strong> secuencia finita e indivisible (atómica) de operaciones. <strong>Regla:</strong> <code>estado × evento → acción</code> (una única regla por par). <strong>Comportamiento</strong> <code>B(x)</code>: el conjunto de reglas de <code>x</code> = su protocolo/algoritmo. El colectivo es <strong>homogéneo</strong> si todas comparten <code>B(x)</code> (siempre se puede homogeneizar).</li>
+        <li><strong>Estado interno</strong> <code>σ(x,t)</code> = registros + reloj en <code>t</code>. Es <strong>determinístico</strong>: mismo estado + mismo evento ⇒ mismo estado nuevo.</li>
+        <li><strong>Conocimiento local</strong> = lo que hay en la memoria de <code>x</code> y lo derivable. Tipos: <strong>información métrica</strong> (nº de nodos, aristas, diámetro), <strong>propiedades topológicas</strong> («es un anillo/árbol») y <strong>mapas topológicos</strong> (matriz de adyacencia, vecindad hasta distancia <code>d</code>).</li>
+        <li><strong>Costo y complejidad:</strong> se mide en <strong>nº de mensajes</strong> <code>M</code>, carga por entidad y <strong>tiempo</strong> (ideal, bajo delays unitarios y relojes sincronizados, vs real). A diferencia del centralizado, acá la <em>comunicación</em> domina: no basta con contar pasos de CPU.</li>
+      </ul>
+      <h3>Elección de líder y exclusión mutua distribuida</h3>
+      <ul>
+        <li><strong>Ring (anillo):</strong> quien detecta la caída manda <code>ELECTION</code> con su ID a su sucesor; cada uno agrega su ID; al dar la vuelta gana el <strong>ID más alto</strong> y circula <code>COORDINATOR</code>. <strong>Bully</strong>: el que se despierta desafía a los de ID mayor; si nadie responde, se corona. Ambos eligen al de <strong>mayor ID</strong>.</li>
+        <li><strong>Exclusión mutua distribuida:</strong> <em>centralizado</em> (simple pero SPOF), <em>Ricart-Agrawala</em> (sin coordinador pero N² mensajes) y <em>token ring</em> (justo pero con latencia).</li>
+      </ul>
+
+      <h2>9 · Redes, OSI y sockets</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Capa OSI</th><th>Objetivo</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>Física</td><td>Transmitir bits crudos por el medio.</td></tr>
+            <tr><td>2</td><td>Enlace</td><td>Tramas entre nodos vecinos; detectar errores; control de acceso al medio.</td></tr>
+            <tr><td>3</td><td>Red</td><td>Enrutar paquetes origen→destino (IP, routing).</td></tr>
+            <tr><td>4</td><td>Transporte</td><td>Comunicación extremo-a-extremo (TCP/UDP), multiplexar apps.</td></tr>
+            <tr><td>5</td><td>Sesión</td><td>Establecer/mantener/cerrar diálogos.</td></tr>
+            <tr><td>6</td><td>Presentación</td><td>Sintaxis de datos: encoding, serialización, cifrado.</td></tr>
+            <tr><td>7</td><td>Aplicación</td><td>Interfaz con el usuario (HTTP, DNS, FTP).</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Cada capa <code>N</code> ofrece un <strong>servicio</strong> a la <code>N+1</code> y habla un <strong>protocolo</strong> con su par. Las capas 1-3 corren en emisor, receptor <em>y routers</em>; la 4 solo en los extremos. PDU: bit → trama → paquete → segmento.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>TCP</th><th>UDP</th></tr></thead>
+          <tbody>
+            <tr><td>Conexión</td><td>Con conexión (handshake)</td><td>Sin conexión</td></tr>
+            <tr><td>Entrega</td><td>Garantizada, ordenada</td><td>No garantizada, sin orden</td></tr>
+            <tr><td>Control</td><td>De flujo y errores</td><td>Ninguno (mínimo overhead)</td></tr>
+            <tr><td>Usar en</td><td>Confiabilidad (video on-demand, archivos)</td><td>Baja latencia (streaming en vivo, juegos)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>Socket</strong> = interfaz de comunicación entre procesos (misma o distinta máquina); base del modelo <strong>cliente-servidor</strong> (cliente activo inicia, servidor pasivo responde). Implementan <strong>pasaje de mensajes</strong>. Orden de syscalls: servidor <code>socket → bind → listen → accept</code>; cliente <code>socket → connect</code>. Servidor <em>iterativo</em> (uno por vez) vs <em>concurrente</em> (thread/tarea por conexión).</p>
+      <div class="callout"><strong>Sockets Unix vs channels de Rust:</strong> los channels son <em>entre threads del mismo proceso</em>, tipados, FIFO garantizado, sin fallas de red; los sockets van <em>entre procesos/máquinas</em>, envían bytes (hay que serializar y delimitar), sufren pérdida/reorden/latencia y relojes no sincronizados. Un channel es unidireccional; una conexión TCP, bidireccional.</div>
+
+      <h2>10 · Diseño de un sistema (Ejercicio 5)</h2>
+      <p>Receta para el ejercicio de diseño (el que más puntos vale):</p>
+      <ol>
+        <li><strong>Elegir la transaccionalidad</strong> y justificar: ¿evitar sobreventa de un recurso finito? → <strong>2PC</strong> + reserva con timeout. ¿Mucha lectura y poca contención? → <strong>optimista</strong>. ¿Mucha escritura en conflicto? → <strong>2PL</strong>.</li>
+        <li><strong>Identificar entidades y mensajes:</strong> coordinador (el sistema) + participantes (inventario/stock, pago, envío). Dibujar el diagrama de secuencia.</li>
+        <li><strong>Casos de éxito y de falla:</strong> éxito = todos READY → commit; falla = pago rechazado o stock agotado por otro usuario → ABORT y liberar la reserva.</li>
+        <li><strong>Pseudocódigo Rust con actores:</strong> un mensaje por operación, estado privado, <code>do_send</code> para notificar.</li>
+      </ol>
+      <pre data-code="rust">// Esqueleto mínimo de actor (Actix) para el diseño del final
+#[derive(Message)]
+#[rtype(result = "()")]
+struct Reservar { asiento: usize, cliente: Addr<Cliente> }
+
+struct Inventario { disponibles: usize }
+
+impl Actor for Inventario {
+    type Context = Context<Self>;
+}
+
+impl Handler<Reservar> for Inventario {
+    type Result = ();
+    fn handle(&mut self, msg: Reservar, _ctx: &mut Context<Self>) {
+        if self.disponibles > 0 {
+            self.disponibles -= 1;           // estado privado, sin locks
+            msg.cliente.do_send(Confirmado { asiento: msg.asiento });
+        } else {
+            msg.cliente.do_send(SinStock);
+        }
+    }
+}</pre>
+
+      <h2>11 · Testing (por si cae)</h2>
+      <ul>
+        <li><strong>Loom:</strong> explora <em>exhaustivamente</em> los interleavings posibles de un test concurrente para encontrar data races/deadlocks que un run normal no detecta.</li>
+        <li><strong>Mockall:</strong> genera mocks de traits para aislar dependencias y testear sin la implementación real.</li>
+      </ul>
+
+      <h2>12 · Machete: definiciones de una línea</h2>
+      <div class="callout blue">
+        <ul>
+          <li><strong>Sección crítica:</strong> bloque donde se accede a recursos compartidos; debe respetar EM, no-deadlock y no-starvation.</li>
+          <li><strong>Deadlock:</strong> espera cíclica por recursos; requiere las 4 condiciones de Coffman.</li>
+          <li><strong>Starvation:</strong> el sistema avanza pero un proceso queda postergado para siempre.</li>
+          <li><strong>Race condition:</strong> el resultado depende del timing de accesos no sincronizados.</li>
+          <li><strong>Busy-wait:</strong> loop que chequea una condición y quema CPU; el <code>sleep</code> no lo convierte en pasivo.</li>
+          <li><strong>Fork-join:</strong> dividir en subtareas independientes, resolver en paralelo y combinar.</li>
+          <li><strong>Work-stealing:</strong> deques por thread; el ocioso roba del extremo opuesto de otro.</li>
+          <li><strong>Actor:</strong> estado privado + mailbox; procesa un mensaje a la vez; no comparte memoria.</li>
+          <li><strong>Monitor:</strong> exclusión mutua + variables de condición encapsuladas.</li>
+          <li><strong>Semáforo:</strong> contador de permisos con <code>wait</code>/<code>signal</code>.</li>
+          <li><strong>Red de Petri:</strong> grafo bipartito lugares/transiciones; los tokens modelan el estado.</li>
+          <li><strong>Grafo de alcance:</strong> todas las marcas alcanzables y las transiciones entre ellas.</li>
+          <li><strong>2PC:</strong> PREPARE (votos) + COMMIT/ABORT global; atómico pero bloqueante.</li>
+          <li><strong>Entidad distribuida:</strong> unidad de cómputo reactiva con memoria local y reloj; solo mensajes.</li>
+          <li><strong>Comportamiento B(x):</strong> conjunto de reglas <code>estado × evento → acción</code>; es el protocolo.</li>
+          <li><strong>Elección de líder (ring/bully):</strong> gana el de mayor ID.</li>
+          <li><strong>OSI:</strong> 7 capas; cada una da servicio a la de arriba y habla un protocolo con su par.</li>
+          <li><strong>TCP:</strong> con conexión, confiable. <strong>UDP:</strong> sin conexión, rápido, sin garantías.</li>
+        </ul>
+      </div>
+
+      <p style="margin-top:32px"><a href="index.html">← Volver al apunte completo</a></p>

@@ -88,9 +88,11 @@ oscuro, offline) con contenido y diseño propios.
 ```
 programacion-concurrente/
 ├── index.html              # App PWA completa            ← GENERADO por build.py
-├── resumen.html            # Versión imprimible          ← GENERADO
+├── resumen.html            # Apunte completo standalone  ← GENERADO
 ├── resumen.md              # Mirror en Markdown          ← GENERADO
 ├── resumen-analitico.html  # Redirección a resumen.html
+├── repaso-final.html       # Repaso compacto para el final ← GENERADO
+├── repaso-final.md         # Mirror en Markdown          ← GENERADO
 │
 ├── content/                # ← LA FUENTE DEL CONTENIDO (acá se edita)
 │   ├── part-00-fundamentos.html          (caps. 01-03)
@@ -105,7 +107,8 @@ programacion-concurrente/
 │   ├── part-05-distribuidos.html         (caps. 15-17)
 │   ├── part-05b-sockets-ambientes.html   (caps. 18-20)
 │   ├── part-05c-testing.html             (cap.  21)
-│   └── part-06-anexos.html               (anexos A, B, C)
+│   ├── part-06-anexos.html               (anexos A, B, C)
+│   └── repaso-final.html                 (repaso compacto para el final)
 ├── toc.html                # Índice de la barra lateral  ← FUENTE
 ├── build.py                # Ensambla index/resumen desde content/ + toc.html
 │
@@ -117,8 +120,13 @@ programacion-concurrente/
 └── README.md
 ```
 
-> **Regla de oro:** `index.html`, `resumen.html` y `resumen.md` son **generados**. No los
-> edites a mano: se pisan en el próximo `build.py`. Tocá siempre `content/*.html` y `toc.html`.
+> **Regla de oro:** `index.html`, `resumen.html`, `resumen.md`, `repaso-final.html` y
+> `repaso-final.md` son **generados**. No los edites a mano: se pisan en el próximo
+> `build.py`. Tocá siempre `content/*.html` y `toc.html`.
+>
+> El **Repaso final** (`content/repaso-final.html` → `repaso-final.html`) es el resumen
+> compacto y orientado a finales: el mínimo teórico para aprobar, con bullets, tablas y
+> definiciones. Es independiente del apunte (no se concatena con los `part-*.html`).
 
 ## Cómo hacer cambios
 
