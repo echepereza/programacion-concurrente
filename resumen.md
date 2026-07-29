@@ -1768,7 +1768,43 @@ W(p', t)
 
 tokens en cada salida. La ordinaria es el caso con todos los pesos = 1.
 
-Los **arcos inhibidores** son una extensión: impiden que una transición se dispare si el lugar de origen *tiene* tokens (condición «que esté vacío»). Son necesarios, por ejemplo, para modelar la **preferencia de escritura** en lector-escritor.
+**¿Qué te permite modelar la red general que la ordinaria no?** Los **pesos** dejan que una transición *consuma o produzca varios tokens de golpe*, algo que con pesos 1 tendrías que simular con construcciones incómodas. Con pesos modelás directamente:
+
+- **«Necesito K recursos a la vez»:** un arco de peso `K` hace que `t` dispare solo si hay `≥ K` tokens y los tome *juntos* (una reacción que consume 2 de A y 1 de B; un filósofo que agarra sus 2 palitos atómicamente).
+- **Producción/consumo en lote (batch):** «empaquetar 6 unidades en una caja» = arco de entrada de peso 6; «un pallet trae 12» = arco de salida de peso 12.
+- **Umbrales:** disparar recién cuando se acumuló cierta cantidad (la habilitación `M(p) ≥ W(p,t)` *es* un umbral).
+
+Lo que NINGUNA de las dos puede hacer:
+
+«testear por cero», es decir, disparar
+
+porque un lugar está vacío
+
+. Ni la ordinaria ni la general detectan la
+
+ausencia
+
+de tokens (solo la presencia de
+
+≥ K
+
+). Para eso hace falta la extensión de
+
+arcos inhibidores
+
+, que habilitan una transición
+
+solo si el lugar de origen está vacío
+
+(se dibuja con un puntito en la punta, como el NOT de electrónica). Ese saltito de expresividad no es menor: las redes con arcos inhibidores son
+
+Turing-completas
+
+; las P/T (ordinarias/generales) no. Es lo que hace falta, por ejemplo, para la
+
+preferencia de escritura
+
+en lector-escritor (frenar a los lectores mientras haya un escritor esperando) — ver el ejemplo abajo.
 
 ### Ejemplo 1 — Exclusión mutua (sección crítica)
 
@@ -1818,74 +1854,161 @@ flowchart LR
 
 **Enunciado:** 3 asientos disponibles; un cliente reserva un asiento si hay al menos uno libre (si no, espera); un asiento ocupado puede liberarse (cancelación) y queda disponible; nunca debe reservarse más asientos de los que existen.
 
+Un modelo *ingenuo* (solo `Libres ⇄ Ocupados` con `Reservar`/`Cancelar`) es **incorrecto**: `Cancelar` quedaría habilitada con solo haber asientos ocupados, así que la red *cancela sola* (sin que ningún usuario lo pida, por el no-determinismo de Petri), y el usuario que *espera* cuando no hay asientos no aparece en ningún lugar. El modelo fiel **separa la demanda (usuarios) de los recursos (asientos)**:
+
 ```mermaid
 flowchart LR
-    L(("Libres — M0 = 3")) -->|"peso 1"| R["Reservar"]
-    R --> O(("Ocupados — M0 = 0"))
-    O -->|"peso 1"| C["Cancelar"]
-    C --> L
+    P1(("P1: usuarios que quieren reservar")) --> t1["t1: reserva"]
+    P2(("P2: asientos disponibles (M0=3)")) --> t1
+    t1 --> P4(("P4: asientos reservados"))
+    P3(("P3: usuarios que quieren cancelar")) --> t2["t2: cancelacion"]
+    P4 --> t2
+    t2 --> P2
           
 ```
 
-*Lugares: Libres (asientos disponibles) y Ocupados (asientos reservados). Transiciones: Reservar (habilitada solo si Libres ≥ 1: consume 1 de Libres y produce 1 en Ocupados) y Cancelar (consume 1 de Ocupados y produce 1 en Libres). Marca inicial M0 = (Libres:3, Ocupados:0).*
+*Lugares: P1 usuarios que quieren reservar, P2 asientos disponibles, P3 usuarios que quieren cancelar, P4 asientos reservados. Transiciones: t1 reserva (P1 + P2 → P4), t2 cancelación (P3 + P4 → P2). Marca inicial M0 = (0, 3, 0, 0); los pedidos van llegando como tokens en P1/P3.*
 
 Por qué es correcto:
 
-el
+es
+
+dirigido por demanda
+
+—
+
+t1
+
+necesita un usuario real (
+
+P1
+
+)
+
+y
+
+un asiento libre (
+
+P2
+
+); nada se dispara solo. Si
+
+P2 = 0
+
+, los tokens se acumulan en
+
+P1
+
+: los usuarios
+
+esperando
+
+quedan modelados explícitamente (lo que pide el enunciado). El
 
 invariante
 
-Libres + Ocupados = 3
+P2 + P4 = 3
 
-se mantiene en todo disparo (Reservar y Cancelar solo mueven un token de un lugar al otro). Por lo tanto
+se conserva en todo disparo (t1:
 
-Ocupados ≤ 3
+P2−1, P4+1
+
+; t2:
+
+P4−1, P2+1
+
+) →
+
+P4 ≤ 3
 
 siempre
 
-→ nunca se reservan más de 3 asientos. Cuando
+: nunca más reservas que asientos.
 
-Libres = 0
+Secuencia:
 
-,
+(0,3,0,0)
 
-Reservar
+→ llegan 4 pedidos de reserva
 
-no está habilitada: el cliente
+(4,3,0,0)
 
-espera
+→ t1×3
 
-(exactamente lo que pide el enunciado).
+(1,0,0,3)
 
-Secuencia de disparos válida:
+(uno espera, 0 libres)
 
-M0=(3,0)
+→ llega una cancelación
 
-→ Reservar →
+(1,0,1,3)
 
-(2,1)
+→ t2
 
-→ Reservar →
+(1,1,0,2)
 
-(1,2)
+→ t1 (entra el que esperaba)
 
-→ Reservar →
-
-(0,3)
-
-→
-
-(otro cliente quiere reservar pero Reservar está deshabilitada: espera)
-
-→ Cancelar →
-
-(1,2)
-
-→ Reservar →
-
-(0,3)
+(0,0,0,3)
 
 .
+
+Nota de modelado:
+
+es una red
+
+ordinaria
+
+(pesos 1) que trata asientos y usuarios como
+
+recursos anónimos
+
+(importan los conteos, no la identidad).
+
+P2
+
+/
+
+P4
+
+están
+
+acotados
+
+(suman 3);
+
+P1
+
+/
+
+P3
+
+son
+
+colas de demanda no acotadas
+
+(la fila de espera puede crecer).
+
+### Ejemplo 4 — Lector-Escritor con preferencia de escritura (arco inhibidor)
+
+Aparece en varios parciales. La **preferencia de escritura** necesita justo lo que la red P/T no puede: frenar a los lectores *mientras haya un escritor esperando*. Se logra con **arcos inhibidores** (punteados: la transición dispara *solo si ese lugar está vacío*).
+
+```mermaid
+flowchart LR
+    LQ(("L: quieren leer")) --> eL["entrar lector"]
+    eL --> LE(("leyendo"))
+    LE --> sL["salir lector"]
+    WQ(("W: quieren escribir")) --> eW["entrar escritor"]
+    eW --> ES(("escribiendo"))
+    ES --> sW["salir escritor"]
+    ES -.->|inhibe| eL
+    WQ -.->|inhibe| eL
+    LE -.->|inhibe| eW
+    ES -.->|inhibe| eW
+          
+```
+
+*Los arcos punteados son inhibidores (habilitan la transición solo si el lugar está vacío). entrar lector dispara solo si no hay escritor activo (escribiendo vacío) ni escritor esperando (W: quieren vacío) → los escritores tienen prioridad. entrar escritor dispara solo si no hay lectores activos (leyendo vacío) ni otro escritor. Efecto buscado: si llegan escritores sin parar, los lectores se pueden hambrear — es el precio de la preferencia de escritura. (Sin preferencia, se quitan los dos inhibidores hacia entrar lector.)*
 
 ### Modelado de otros problemas clásicos
 
@@ -1958,7 +2081,51 @@ bloqueante
 
 — si el coordinador cae en la fase 2, los participantes quedan en «ready» esperando; el coordinador es cuello de botella y punto único de fallo; agrega latencia (2 rondas de mensajes).
 
+#### ¿Qué pasa si falla cada mensaje? (recuperación del 2PC)
+
+Todo se apoya en tres pilares: **log persistente** (cada paso se escribe *antes* de enviarse), **timeouts** y **reenvío idempotente**. Punto por punto:
+
+| Falla | Qué pasa / cómo se recupera |
+| --- | --- |
+| Se pierde `prepare`, o un participante cae *antes* de votar | El coordinador no junta todos los votos antes del timeout → decide **ABORT** global. Seguro: sin todos los OK, no se commitea. |
+| Se pierde un `vote` (ready/abort) | Idem: el coordinador hace timeout y **aborta**. |
+| Un participante cae *después* de votar `ready` | Al recuperarse lee «ready» en su log → está **incierto (in-doubt)**: no puede decidir solo. Le *pregunta* la decisión al coordinador y la aplica. |
+| ⚠️ El **coordinador cae** tras juntar los votos, *antes* de enviar la decisión | **El talón de Aquiles.** Los participantes que votaron `ready` quedan **bloqueados**: no saben si commitear o abortar y no pueden decidir por su cuenta (no conocen el voto de los demás). Esperan a que el coordinador *se recupere*, lea su log y reenvíe la decisión. Es justo lo que el 3PC intenta evitar. |
+| Se pierde la decisión (`commit`/`abort`) | El participante en `ready` hace timeout y **re-pregunta**; el coordinador **reenvía** la misma decisión (idempotente). |
+| Un participante cae tras recibir `commit`, antes de aplicar | Al recuperarse lee «commit» del log y **aplica** (idempotente); el commit no se pierde. |
+| Se pierde el `finished`/ack final | El coordinador reenvía `commit`; el participante re-aplica (idempotente) y vuelve a ackear. Sin daño. |
+
+Moraleja:
+
+el 2PC es
+
+seguro
+
+(nunca deja el sistema inconsistente: o todos commitean o todos abortan) pero
+
+bloqueante
+
+. La caída del coordinador en la ventana «votos recibidos → decisión enviada» cuelga a los participantes que votaron
+
+ready
+
+hasta que el coordinador vuelva. Por eso existen el
+
+commit de 3 fases
+
+(agrega un
+
+pre-commit
+
+para poder decidir por timeout) y las
+
+Sagas
+
+.
+
 ### Control de concurrencia
+
+El 2PC resuelve la *atomicidad* (que todos commiteen o ninguno), pero falta la **I** de ACID: el **aislamiento**. El **control de concurrencia** es el mecanismo que evita que transacciones que corren *en simultáneo* se pisen y dejen datos inconsistentes; su objetivo es que el resultado sea equivalente a haberlas ejecutado en *algún* orden serial (**serializable**). Hay dos filosofías: **pesimista** —asumir que va a haber conflicto y prevenirlo bloqueando por adelantado (2PL)— u **optimista** —dejar correr y detectar el conflicto al final (concurrencia optimista, timestamps)—. Las tres técnicas clásicas:
 
 | Técnica | Cómo funciona | Ventajas / desventajas |
 | --- | --- | --- |
@@ -2676,6 +2843,40 @@ Un `struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }` con `function_1` (si 
 
 **Error:** usa `if *amount &lt;= 0 { wait }` en vez de `while`. Ante un **spurious wakeup** o varios waiters despertados por `notify_all`, un proceso puede seguir con `amount == 0` y decrementar a negativo. **Solución:** cambiar el `if` por `while`. (Ver [§12](#semaforos).)
 
+**[Parcial] Revisión de código: productor-consumidor con buffer acotado**
+
+```rust
+const N: usize = 10;
+let buffer = Arc::new(Mutex::new(Vec::<u32>::with_capacity(N)));
+let buffer_local = buffer.clone();
+
+let handle = thread::spawn(move || loop {          // PRODUCTOR
+    let mut buf = buffer_local.lock().unwrap();
+    if buf.len() < N {
+        buf.push(rand::thread_rng().gen());
+    } else {
+        thread::sleep(Duration::from_secs(1));     // (!) duerme CON el lock tomado
+        drop(buf);                                 // (!) drop DESPUÉS del sleep -> inútil
+    }
+});
+loop {                                             // CONSUMIDOR
+    let mut buf = buffer.lock().unwrap();
+    if !buf.is_empty() { println!("{}", buf.pop().unwrap()); }
+    else { thread::sleep(Duration::from_secs(1)); drop(buf); }
+}
+handle.join().unwrap();
+```
+
+**(a) Problemas y solución:**
+
+- **Busy-wait (espera activa):** ambos *poll-ean* con `sleep(1s)` en vez de bloquearse. Solución: una `Condvar` (o dos: `notEmpty`/`notFull`) que despierte al productor cuando hay hueco y al consumidor cuando hay ítem — o directamente un canal `mpsc`.
+- **Duerme reteniendo el lock:** en el `else` el `sleep` ocurre *antes* del `drop`, así que el hilo tiene el `Mutex` tomado durante todo el segundo → el otro hilo no puede entrar y el sistema se serializa/estanca. El `drop` debería ir *antes* del sleep.
+- **`handle.join()` inalcanzable:** el loop del consumidor es infinito.
+
+**(b) ¿Por qué el `drop`?** El `MutexGuard` mantiene el lock tomado hasta que se destruye (RAII). Si no lo soltás *antes* de bloquearte/dormir, el otro hilo no puede adquirir el `Mutex` y nadie progresa. (Y acá está mal ubicado: soltar *después* del sleep no sirve.)
+
+La solución correcta se modela en Petri como el [productor-consumidor con buffer acotado (§14, Ej 2)](#petri) — justo lo que pedía el Ej 4 del recuperatorio.
+
 ### Ej 2 — Modelos, fork-join y Redes de Petri
 
 **Red Ordinaria vs Red General de Petri**
@@ -2713,10 +2914,25 @@ Dos lugares para el buffer: uno de **ítems** (empieza vacío; el consumidor req
 - «El scheduler del SO puede pausar una tarea async puntual» → **F** (las async son cooperativas, las maneja el executor).
 - «Threads y tareas async tienen stack propio» → **parcial**: el thread sí; la tarea async guarda su estado en el Future, no en un stack del SO dedicado.
 - «Con una sola CPU, hilos CPU-intensivos tardan mucho menos que tareas async con el mismo cómputo» → **F**: con cómputo puro no hay ventaja async; incluso los hilos pagan cambios de contexto.
+- «Un hilo esperando sobre una condvar solo puede despertarse cuando otro hace `signal` de la misma» → **F**: existen los *spurious wakeups* (puede despertar sin signal) → por eso el `wait` va en un `while`.
+- «El modelo de pasaje de mensajes elimina la posibilidad de deadlocks» → **F**: elimina los *data races* por memoria compartida, pero sigue habiendo deadlock por dependencias cruzadas (A espera a B y B a A). Lo mitigan soluciones como Chandy-Misra.
+- «Al usar tareas async, el executor de Rust asegura que cada tarea será eventualmente ejecutada» → **F**: es *cooperativo*; una tarea que nunca llega a un `await` (cómputo CPU-bound) acapara el hilo y mata a las demás. No hay garantía de fairness como en el scheduler del SO.
+- «Las tareas async son más livianas porque comprimen su stack» → **F**: no «comprimen» un stack; guardan *solo* el estado necesario para retomar dentro del `Future` (no tienen un stack del SO que crezca como el thread).
+- «Para acceder al estado interno de un actor desde otros actores hace falta exclusión mutua para evitar race conditions» → **F**: los actores *no* comparten estado; se accede **solo por mensajes** (uno a la vez en la mailbox) → sin locks y sin races por diseño.
 
 **[Parcial] Elegir el modelo de concurrencia por caso**
 
-Resuelto en la tabla de [§4](#modelos): matrices→SIMD/GPU; varias APIs→async; log muy visitado→async o RwLock; backend de juego→actores; muchos .DOC→.PDF→fork-join; Menti/Kahoot→actores; caché→RwLock; API con modelo NLP→async + `spawn_blocking`.
+Base en la tabla de [§4](#modelos) (matrices→SIMD/GPU; varias APIs→async; log muy visitado→async o RwLock; backend de juego→actores; .DOC→.PDF→fork-join; Menti/Kahoot→actores; caché→RwLock; API NLP→async + `spawn_blocking`). Casos de los parciales 06/05 y 10/06 2026:
+
+| Caso | Modelo · por qué |
+| --- | --- |
+| Encriptar un conjunto de archivos, cada uno por separado | **Fork-join** / pool: CPU-bound e independiente (unidad de trabajo por archivo). |
+| App que convierte texto a voz *localmente* en el teléfono | Cómputo local por pedido → un **thread**/fork-join (o `spawn_blocking` si hay una UI async que no debe bloquearse). No es I/O. |
+| Hosting de archivos estáticos (tipo Amazon S3) | **Async**: I/O-bound, muchísimas conexiones que sobre todo esperan disco/red. |
+| Dashboard de automatización del hogar (estados en vivo) | **Actores** / pub-sub + **async**: streaming de eventos en vivo desde muchos sensores hacia muchos clientes. |
+| Renderizado 3D en un motor de videojuegos | **Fork-join + GPU**: CPU/GPU-bound, masivo y en tiempo real (no async). |
+| Sistema de votación electrónica (elegir autoridades) | **Estado compartido con atómicos** o un **actor contador**: agregación concurrente con mucha escritura (no SIMD). |
+| Broker de mensajería MQTT con miles de conexiones IoT | **Async** (I/O-bound masivo) + **actores** por topic/cliente: el clásico caso de decenas de miles de conexiones que esperan. |
 
 **[Parcial] Modelar en Petri: productor-consumidor y lector-escritor**
 
@@ -2885,6 +3101,30 @@ let promedio = *total.lock().unwrap() / 100; // tiempo promedio
 ```
 
 El **semáforo** acota los threads activos (baja latencia); el `Arc&lt;Mutex&gt;` acumula los tiempos. Como es I/O simulada, una variante idiomática sería **async** con un límite de concurrencia.
+
+**[Parcial] Diseñar con actores: patio de comidas y juegos con notificaciones**
+
+Los clientes hacen un pedido en un local o reservan un juego (bowling/pool/minigolf), dejan su teléfono y siguen paseando; cuando la comida está lista o se libera una pista, reciben una notificación. Los juegos dan **10 min de tolerancia** o se pierde el turno.
+
+| Actor | Estado interno | Mensajes (con payload) |
+| --- | --- | --- |
+| Cliente | teléfono, pedido/reserva en curso | envía `Pedir{items}` / `Reservar{juego}`; recibe `ComidaLista` / `TurnoDisponible{juego, hasta}`; responde `Llego` |
+| Local de comidas | cola de pedidos | recibe `Pedir{cliente, items}`; al terminar → `ComidaLista` al Cliente |
+| Juego (uno por bowling/pool/minigolf) | pista libre/ocupada, **cola FIFO** de clientes, timer | recibe `Reservar{cliente}`, `Llego{cliente}`, `Timeout{cliente}`; al liberarse → `TurnoDisponible` al primero de la cola y arranca timer de 10 min |
+
+**Clave:** el timer de 10 min es un mensaje `Timeout` que el Juego se *auto-envía* (temporizador); si llega antes que el `Llego` del cliente, se le da el turno al siguiente de la cola. Nunca se bloquea esperando: se encola el `Addr` del cliente y se le avisa cuando corresponde.
+
+**[Parcial] Diseñar con actores: clínica de exámenes pre-ocupacionales**
+
+Cada paciente completa todas las estaciones lo más eficiente posible: Recepción+orina (3 recepcionistas), Sangre (6 estaciones), ECG (1 equipo), Espirometría (1 equipo). «Eficiente» = evitar colas innecesarias → ir a la próxima estación pendiente que esté libre, no en orden fijo.
+
+| Actor | Estado interno | Mensajes (con payload) |
+| --- | --- | --- |
+| Paciente | estaciones pendientes, muestra de orina | envía `Solicitar{estación}`; recibe `Atendido{estación}`; al completar todas → sale |
+| Estación (pool: Recepción×3, Sangre×6, ECG×1, Espirometría×1) | instancias libres, **cola FIFO** de pacientes | recibe `Solicitar{paciente}`; si hay instancia libre atiende, si no encola; al terminar → `Atendido` al paciente y toma el siguiente |
+| Coordinador (opcional) | tamaño de cada cola | rutea al paciente a la estación pendiente con **menor cola** (minimiza la espera total) |
+
+**Clave:** cada estación es un actor con capacidad N (un `SyncArbiter` de N workers, o un contador de instancias libres + cola FIFO). El paciente, tras cada estación, pide la *próxima pendiente disponible* en lugar de un orden fijo → circuito eficiente. Nadie hace busy-wait: se encola y se avisa por mensaje.
 
 <a id="glosario"></a>
 

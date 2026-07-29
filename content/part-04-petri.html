@@ -40,7 +40,13 @@ flowchart TB
           <li><strong><code>M0 : P → N ∪ {0}</code> (marca inicial):</strong> la configuración de tokens al arrancar.</li>
         </ul>
         <div class="callout blue"><strong>Regla de disparo (general):</strong> <code>t</code> está habilitada si <code>M(p) &gt;= W(p, t)</code> para todo lugar de entrada <code>p</code>. Al dispararse, consume <code>W(p, t)</code> tokens de cada entrada y produce <code>W(p', t)</code> tokens en cada salida. La ordinaria es el caso con todos los pesos = 1.</div>
-        <p>Los <strong>arcos inhibidores</strong> son una extensión: impiden que una transición se dispare si el lugar de origen <em>tiene</em> tokens (condición «que esté vacío»). Son necesarios, por ejemplo, para modelar la <strong>preferencia de escritura</strong> en lector-escritor.</p>
+        <p><strong>¿Qué te permite modelar la red general que la ordinaria no?</strong> Los <strong>pesos</strong> dejan que una transición <em>consuma o produzca varios tokens de golpe</em>, algo que con pesos 1 tendrías que simular con construcciones incómodas. Con pesos modelás directamente:</p>
+        <ul class="study-list">
+          <li><strong>«Necesito K recursos a la vez»:</strong> un arco de peso <code>K</code> hace que <code>t</code> dispare solo si hay <code>≥ K</code> tokens y los tome <em>juntos</em> (una reacción que consume 2 de A y 1 de B; un filósofo que agarra sus 2 palitos atómicamente).</li>
+          <li><strong>Producción/consumo en lote (batch):</strong> «empaquetar 6 unidades en una caja» = arco de entrada de peso 6; «un pallet trae 12» = arco de salida de peso 12.</li>
+          <li><strong>Umbrales:</strong> disparar recién cuando se acumuló cierta cantidad (la habilitación <code>M(p) ≥ W(p,t)</code> <em>es</em> un umbral).</li>
+        </ul>
+        <div class="callout warning"><strong>Lo que NINGUNA de las dos puede hacer:</strong> «testear por cero», es decir, disparar <em>porque un lugar está vacío</em>. Ni la ordinaria ni la general detectan la <em>ausencia</em> de tokens (solo la presencia de <code>≥ K</code>). Para eso hace falta la extensión de <strong>arcos inhibidores</strong>, que habilitan una transición <em>solo si el lugar de origen está vacío</em> (se dibuja con un puntito en la punta, como el NOT de electrónica). Ese saltito de expresividad no es menor: las redes con arcos inhibidores son <strong>Turing-completas</strong>; las P/T (ordinarias/generales) no. Es lo que hace falta, por ejemplo, para la <strong>preferencia de escritura</strong> en lector-escritor (frenar a los lectores mientras haya un escritor esperando) — ver el ejemplo abajo.</div>
 
         <h3>Ejemplo 1 — Exclusión mutua (sección crítica)</h3>
         <figure class="diagram">
@@ -85,20 +91,42 @@ flowchart LR
 
         <h3>Ejemplo 3 — Reserva de asientos de un estadio (final 16/07/2026)</h3>
         <p><strong>Enunciado:</strong> 3 asientos disponibles; un cliente reserva un asiento si hay al menos uno libre (si no, espera); un asiento ocupado puede liberarse (cancelación) y queda disponible; nunca debe reservarse más asientos de los que existen.</p>
+        <p>Un modelo <em>ingenuo</em> (solo <code>Libres ⇄ Ocupados</code> con <code>Reservar</code>/<code>Cancelar</code>) es <strong>incorrecto</strong>: <code>Cancelar</code> quedaría habilitada con solo haber asientos ocupados, así que la red <em>cancela sola</em> (sin que ningún usuario lo pida, por el no-determinismo de Petri), y el usuario que <em>espera</em> cuando no hay asientos no aparece en ningún lugar. El modelo fiel <strong>separa la demanda (usuarios) de los recursos (asientos)</strong>:</p>
         <figure class="diagram">
           <div class="mermaid">
 flowchart LR
-    L(("Libres — M0 = 3")) -->|"peso 1"| R["Reservar"]
-    R --> O(("Ocupados — M0 = 0"))
-    O -->|"peso 1"| C["Cancelar"]
-    C --> L
+    P1(("P1: usuarios que quieren reservar")) --> t1["t1: reserva"]
+    P2(("P2: asientos disponibles (M0=3)")) --> t1
+    t1 --> P4(("P4: asientos reservados"))
+    P3(("P3: usuarios que quieren cancelar")) --> t2["t2: cancelacion"]
+    P4 --> t2
+    t2 --> P2
           </div>
-          <figcaption><strong>Lugares:</strong> <code>Libres</code> (asientos disponibles) y <code>Ocupados</code> (asientos reservados). <strong>Transiciones:</strong> <code>Reservar</code> (habilitada solo si <code>Libres ≥ 1</code>: consume 1 de Libres y produce 1 en Ocupados) y <code>Cancelar</code> (consume 1 de Ocupados y produce 1 en Libres). <strong>Marca inicial</strong> <code>M0 = (Libres:3, Ocupados:0)</code>.</figcaption>
+          <figcaption><strong>Lugares:</strong> <code>P1</code> usuarios que quieren reservar, <code>P2</code> asientos disponibles, <code>P3</code> usuarios que quieren cancelar, <code>P4</code> asientos reservados. <strong>Transiciones:</strong> <code>t1</code> reserva (<code>P1 + P2 → P4</code>), <code>t2</code> cancelación (<code>P3 + P4 → P2</code>). <strong>Marca inicial</strong> <code>M0 = (0, 3, 0, 0)</code>; los pedidos van llegando como tokens en <code>P1</code>/<code>P3</code>.</figcaption>
         </figure>
         <div class="callout">
-          <strong>Por qué es correcto:</strong> el <strong>invariante</strong> <code>Libres + Ocupados = 3</code> se mantiene en todo disparo (Reservar y Cancelar solo mueven un token de un lugar al otro). Por lo tanto <code>Ocupados ≤ 3</code> <em>siempre</em> → nunca se reservan más de 3 asientos. Cuando <code>Libres = 0</code>, <code>Reservar</code> no está habilitada: el cliente <strong>espera</strong> (exactamente lo que pide el enunciado).<br><br>
-          <strong>Secuencia de disparos válida:</strong> <code>M0=(3,0)</code> → Reservar → <code>(2,1)</code> → Reservar → <code>(1,2)</code> → Reservar → <code>(0,3)</code> → <em>(otro cliente quiere reservar pero Reservar está deshabilitada: espera)</em> → Cancelar → <code>(1,2)</code> → Reservar → <code>(0,3)</code>.
-        </div>
+          <strong>Por qué es correcto:</strong> es <em>dirigido por demanda</em> — <code>t1</code> necesita un usuario real (<code>P1</code>) <em>y</em> un asiento libre (<code>P2</code>); nada se dispara solo. Si <code>P2 = 0</code>, los tokens se acumulan en <code>P1</code>: los usuarios <strong>esperando</strong> quedan modelados explícitamente (lo que pide el enunciado). El <strong>invariante</strong> <code>P2 + P4 = 3</code> se conserva en todo disparo (t1: <code>P2−1, P4+1</code>; t2: <code>P4−1, P2+1</code>) → <code>P4 ≤ 3</code> <em>siempre</em>: nunca más reservas que asientos.<br><br>
+          <strong>Secuencia:</strong> <code>(0,3,0,0)</code> → llegan 4 pedidos de reserva <code>(4,3,0,0)</code> → t1×3 <code>(1,0,0,3)</code> <em>(uno espera, 0 libres)</em> → llega una cancelación <code>(1,0,1,3)</code> → t2 <code>(1,1,0,2)</code> → t1 (entra el que esperaba) <code>(0,0,0,3)</code>.<br><br>
+          <em>Nota de modelado:</em> es una red <strong>ordinaria</strong> (pesos 1) que trata asientos y usuarios como <strong>recursos anónimos</strong> (importan los conteos, no la identidad). <code>P2</code>/<code>P4</code> están <em>acotados</em> (suman 3); <code>P1</code>/<code>P3</code> son <em>colas de demanda no acotadas</em> (la fila de espera puede crecer).</div>
+
+        <h3>Ejemplo 4 — Lector-Escritor con preferencia de escritura (arco inhibidor)</h3>
+        <p>Aparece en varios parciales. La <strong>preferencia de escritura</strong> necesita justo lo que la red P/T no puede: frenar a los lectores <em>mientras haya un escritor esperando</em>. Se logra con <strong>arcos inhibidores</strong> (punteados: la transición dispara <em>solo si ese lugar está vacío</em>).</p>
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart LR
+    LQ(("L: quieren leer")) --> eL["entrar lector"]
+    eL --> LE(("leyendo"))
+    LE --> sL["salir lector"]
+    WQ(("W: quieren escribir")) --> eW["entrar escritor"]
+    eW --> ES(("escribiendo"))
+    ES --> sW["salir escritor"]
+    ES -.->|inhibe| eL
+    WQ -.->|inhibe| eL
+    LE -.->|inhibe| eW
+    ES -.->|inhibe| eW
+          </div>
+          <figcaption>Los arcos <em>punteados</em> son <strong>inhibidores</strong> (habilitan la transición solo si el lugar está <em>vacío</em>). <strong>entrar lector</strong> dispara solo si no hay escritor activo (<code>escribiendo</code> vacío) <em>ni</em> escritor esperando (<code>W: quieren</code> vacío) → los escritores tienen prioridad. <strong>entrar escritor</strong> dispara solo si no hay lectores activos (<code>leyendo</code> vacío) ni otro escritor. Efecto buscado: si llegan escritores sin parar, los lectores <em>se pueden hambrear</em> — es el precio de la preferencia de escritura. (Sin preferencia, se quitan los dos inhibidores hacia <code>entrar lector</code>.)</figcaption>
+        </figure>
 
         <h3>Modelado de otros problemas clásicos</h3>
         <ul class="study-list">

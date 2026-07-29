@@ -50,7 +50,24 @@ sequenceDiagram
           <div class="callout danger"><strong>Desventajas:</strong> es <em>bloqueante</em> — si el coordinador cae en la fase 2, los participantes quedan en «ready» esperando; el coordinador es cuello de botella y punto único de fallo; agrega latencia (2 rondas de mensajes).</div>
         </div>
 
+        <h4>¿Qué pasa si falla cada mensaje? (recuperación del 2PC)</h4>
+        <p>Todo se apoya en tres pilares: <strong>log persistente</strong> (cada paso se escribe <em>antes</em> de enviarse), <strong>timeouts</strong> y <strong>reenvío idempotente</strong>. Punto por punto:</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Falla</th><th>Qué pasa / cómo se recupera</th></tr></thead>
+          <tbody>
+            <tr><td>Se pierde <code>prepare</code>, o un participante cae <em>antes</em> de votar</td><td>El coordinador no junta todos los votos antes del timeout → decide <strong>ABORT</strong> global. Seguro: sin todos los OK, no se commitea.</td></tr>
+            <tr><td>Se pierde un <code>vote</code> (ready/abort)</td><td>Idem: el coordinador hace timeout y <strong>aborta</strong>.</td></tr>
+            <tr><td>Un participante cae <em>después</em> de votar <code>ready</code></td><td>Al recuperarse lee «ready» en su log → está <strong>incierto (in-doubt)</strong>: no puede decidir solo. Le <em>pregunta</em> la decisión al coordinador y la aplica.</td></tr>
+            <tr><td>⚠️ El <strong>coordinador cae</strong> tras juntar los votos, <em>antes</em> de enviar la decisión</td><td><strong>El talón de Aquiles.</strong> Los participantes que votaron <code>ready</code> quedan <strong>bloqueados</strong>: no saben si commitear o abortar y no pueden decidir por su cuenta (no conocen el voto de los demás). Esperan a que el coordinador <em>se recupere</em>, lea su log y reenvíe la decisión. Es justo lo que el 3PC intenta evitar.</td></tr>
+            <tr><td>Se pierde la decisión (<code>commit</code>/<code>abort</code>)</td><td>El participante en <code>ready</code> hace timeout y <strong>re-pregunta</strong>; el coordinador <strong>reenvía</strong> la misma decisión (idempotente).</td></tr>
+            <tr><td>Un participante cae tras recibir <code>commit</code>, antes de aplicar</td><td>Al recuperarse lee «commit» del log y <strong>aplica</strong> (idempotente); el commit no se pierde.</td></tr>
+            <tr><td>Se pierde el <code>finished</code>/ack final</td><td>El coordinador reenvía <code>commit</code>; el participante re-aplica (idempotente) y vuelve a ackear. Sin daño.</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout"><strong>Moraleja:</strong> el 2PC es <strong>seguro</strong> (nunca deja el sistema inconsistente: o todos commitean o todos abortan) pero <strong>bloqueante</strong>. La caída del coordinador en la ventana «votos recibidos → decisión enviada» cuelga a los participantes que votaron <code>ready</code> hasta que el coordinador vuelva. Por eso existen el <strong>commit de 3 fases</strong> (agrega un <em>pre-commit</em> para poder decidir por timeout) y las <strong>Sagas</strong>.</div>
+
         <h3>Control de concurrencia</h3>
+        <p>El 2PC resuelve la <em>atomicidad</em> (que todos commiteen o ninguno), pero falta la <strong>I</strong> de ACID: el <strong>aislamiento</strong>. El <strong>control de concurrencia</strong> es el mecanismo que evita que transacciones que corren <em>en simultáneo</em> se pisen y dejen datos inconsistentes; su objetivo es que el resultado sea equivalente a haberlas ejecutado en <em>algún</em> orden serial (<strong>serializable</strong>). Hay dos filosofías: <strong>pesimista</strong> —asumir que va a haber conflicto y prevenirlo bloqueando por adelantado (2PL)— u <strong>optimista</strong> —dejar correr y detectar el conflicto al final (concurrencia optimista, timestamps)—. Las tres técnicas clásicas:</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Técnica</th><th>Cómo funciona</th><th>Ventajas / desventajas</th></tr></thead>
