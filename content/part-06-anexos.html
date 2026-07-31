@@ -1,4 +1,4 @@
-      <section class="chapter" id="finales" data-title="finales resueltos examen final metodo plantilla como resolver 16 julio 2026 09 julio 2026 diseño de sistema venta online sobreventa transaccionalidad reserva stock secuencia pseudocodigo actores producto SKU">
+      <section class="chapter" id="finales" data-title="finales resueltos examen final metodo plantilla como resolver 16 julio 2026 09 julio 2026 29 julio 2026 diseño de sistema venta online sobreventa transaccionalidad reserva stock secuencia pseudocodigo actores producto SKU correcciones errores comunes que penaliza la catedra usabilidad log reads writes spof reservas de mesas restaurantes async ring cliente servidor funciones entrada salida">
         <div class="chapter-head">
           <div class="chapter-number">A</div>
           <div><h2>Finales resueltos y cómo resolverlos</h2></div>
@@ -24,6 +24,15 @@
           <li><strong>Deadlocks distribuidos</strong> + gráfico. → <a href="#deadlocks">§16</a> (detección centralizada/probe, prevención wait-die/wound-wait).</li>
           <li><strong>Entidad</strong> en un ambiente distribuido y sus capacidades. → <a href="#ambientes">§19</a>.</li>
           <li><strong>Compra-venta de tickets en hora pico</strong> (prevenir compras duplicadas, mucha lectura y escritura): explicar 2PL, timestamps y optimista y elegir. → <a href="#transacciones">§15</a>: con alta contención de escritura conviene <strong>pesimista (2PL / timestamps)</strong> para evitar la sobreventa; optimista solo para la parte de lectura.</li>
+        </ol>
+
+        <h3>Final 29/07/2026 — resuelto</h3>
+        <ol class="study-list">
+          <li><strong>Comparar</strong> estado mutable compartido, fork-join, actores y mensajes: ventajas, desventajas y un ejemplo de uso de cada uno. → <a href="#modelos">§4</a> (tabla de modelos), <a href="#forkjoin">§5</a> (fork-join), <a href="#actores">§9</a> (actores) y <a href="#mensajes">§8</a> (mensajes/canales).</li>
+          <li><strong>Redes de Petri:</strong> qué son las <strong>funciones de entrada y salida</strong>; y <strong>dibujar cliente-servidor</strong> especificando qué es cada elemento (aclaran que no alcanza solo el dibujo). → <a href="#petri">§14</a> (<code>I(t)</code>/<code>O(t)</code>) y <a href="#sockets">§18</a> (cliente <em>activo</em> inicia; servidor <em>pasivo</em> hace <code>bind→listen→accept</code>).</li>
+          <li><strong>Programación asincrónica:</strong> qué problema resuelve que <em>no</em> resuelven los threads; qué problemas de concurrencia tiene; un caso de uso donde conviene y uno contraproducente. → <a href="#async">§7</a>: escala a <em>muchísimas</em> tareas I/O-bound sin un thread por cada una (conviene en servidores con miles de conexiones); contraproducente en trabajo CPU-bound (no hay puntos de espera para ceder) o si bloqueás el executor.</li>
+          <li><strong>Elección de líder — algoritmo ring:</strong> explicarlo, hacer el diagrama, y dar un caso de uso donde convenga y por qué. → <a href="#exclusion">§17</a>: anillo lógico, mensaje <code>ELECTION</code> que acumula IDs, gana el mayor; conviene cuando la topología ya es un anillo y se prioriza simplicidad/pocos mensajes sobre latencia.</li>
+          <li><strong>Diseño — reservas de mesas en varios restaurantes:</strong> ¿qué problemas de concurrencia puede haber en <em>hora pico</em> para un mismo restaurante y cómo los resolverías? → mismo patrón que la venta online: recurso finito (mesas) → riesgo de <strong>sobre-reserva</strong> (dos reservan la última mesa) → reserva con exclusión mutua <em>por restaurante</em> y <strong>timeout</strong>, distinguiendo consultar (lectura) de reservar (escritura). Ver las correcciones más abajo.</li>
         </ol>
 
         <h3>Diseño de un sistema — Venta online con reserva de stock</h3>
@@ -107,6 +116,25 @@ impl Handler<Reservar> for Producto {
 }
 // Confirmar: stock -= qty; reservado -= qty.   Liberar: reservado -= qty.</pre>
         <div class="callout blue">Este diseño combina tres temas del programa: <strong>actores</strong> (§9, aislamiento sin locks), <strong>transaccionalidad</strong> (§15, reserva + rollback) y el <strong>invariante de capacidad</strong> de las <strong>Redes de Petri</strong> (§14, <code>reservado ≤ stock</code>). Mostrar esa integración es lo que distingue un buen final.</div>
+
+        <h3>Qué penaliza la cátedra (correcciones reales de un final)</h3>
+        <p>Estas son las marcas en rojo de un final 16/07 corregido por la cátedra: el tipo de detalle que separa un aprobado de un desaprobado. Anotalas, porque se repiten.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Consigna</th><th>Lo que marcó el docente</th><th>Cómo evitarlo</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Petri</strong>: ordinaria vs general</td><td>«No explicás lo que es c/u, solo las diferencias».</td><td>Definí <em>cada</em> red por separado (qué <em>es</em> una ordinaria, qué <em>es</em> una general) y recién ahí compará. No respondas solo el delta.</td></tr>
+              <tr><td><strong>2PC</strong>: fase PREPARE</td><td>Falta: el coordinador <strong>escribe en un log</strong>.</td><td>Mencioná el <em>log/journaling</em> en cada fase: es lo que permite recuperar el estado tras una caída.</td></tr>
+              <tr><td><strong>2PC</strong>: ventajas / safety</td><td>«Pero hay chances de bloqueo/deadlock».</td><td>2PC <em>no</em> es puro safety: si el coordinador cae entre el voto y la decisión, los participantes que votaron READY quedan <em>in-doubt</em> bloqueados. Nombrá ese bloqueo.</td></tr>
+              <tr><td><strong>Monitores</strong>: implementación</td><td>«Incompleto — y todos sus procedimientos».</td><td>No alcanza con nombrar <code>wait</code>/<code>signal</code>: describí el monitor completo (mutex + variables de condición + <em>todos</em> los procedimientos que exponen y protegen el estado).</td></tr>
+              <tr><td><strong>Diseño</strong>: exclusión centralizada</td><td>⚠ Es un <strong>SPOF</strong>; «deja al usuario esperando indefinidamente»; «¿qué pasa con la usabilidad?».</td><td>No sostengas el lock del recurso mientras hacés operaciones <em>lentas</em> (validar dirección, cobrar): reservá con <strong>timeout</strong> y liberá el lock <em>antes</em> de validar/pagar.</td></tr>
+              <tr><td><strong>Diseño</strong>: modelo de acceso</td><td>«No diferenciás reads de writes».</td><td>Separá <em>lecturas</em> (consultar stock/mesas) de <em>escrituras</em> (reservar/descontar): un <code>RwLock</code> o esquema equivalente, no un mutex único para todo.</td></tr>
+              <tr><td><strong>Diseño</strong>: diagrama de secuencia</td><td>«¿Qué pasa si es inválida?», «Falta el pago».</td><td>Dibujá también el <strong>camino de falla</strong> (dirección inválida → abortar y devolver stock) y el paso <em>real</em> de pago, no solo el <em>happy path</em>.</td></tr>
+              <tr><td><strong>Ambientes</strong>: Conocimiento</td><td>Quedó sin responder.</td><td>Estudiá los <em>tipos de conocimiento</em>: información <strong>métrica</strong>, <strong>propiedades topológicas</strong> y <strong>mapas topológicos</strong> (<a href="#ambientes">§19</a>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warning"><strong>Moraleja del ejercicio de diseño:</strong> la exclusión mutua centralizada «resuelve» la sobreventa pero mete un cuello de botella (SPOF) y mata la usabilidad si el lock se sostiene durante validación y pago. La cátedra espera que <strong>reserves el recurso rápido (con timeout), liberes el lock, y recién ahí valides y cobres</strong>, y que <strong>distingas lecturas de escrituras</strong>. Vale igual para la venta online y para las reservas de mesas del final 29/07.</div>
       </section>
 
       <section class="chapter" id="ejercicios" data-title="banco de ejercicios preguntas de final parciales resueltos por tipo de ejercicio busy wait analisis codigo semaforo condvar if while spurious wakeup verdadero falso async elegir modelo pseudocodigo N threads productor consumidor lector escritor petri restaurante actores seccion critica programa modelo correccion safety liveness deadlock wait-die wound-wait grafo de alcance fork join work stealing osi capas sockets streaming tcp udp channels unix ambientes distribuidos eventos ring costo complejidad estado interno entradas conciertos 2pc votos eleccion mesa contador">

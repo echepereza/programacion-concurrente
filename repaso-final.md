@@ -357,6 +357,38 @@ impl Handler<Reservar> for Inventario {
 }
 ```
 
+Errores que penaliza la cátedra (correcciones reales):
+
+no sostengas el lock del recurso mientras validás dirección o cobrás →
+
+reservá con timeout y liberá el lock antes
+
+(si no, es un SPOF que deja al usuario esperando).
+
+Distinguí lecturas de escrituras
+
+(RwLock, no un mutex único). En el diagrama de secuencia dibujá también el
+
+camino de falla
+
+y el
+
+pago real
+
+, no solo el happy path. En 2PC nombrá el
+
+log
+
+y el
+
+bloqueo
+
+si cae el coordinador. En Petri,
+
+definí cada red
+
+(ordinaria y general), no solo la diferencia.
+
 <a id="rf-testing"></a>
 
 ## 11. Testing (por si cae)
