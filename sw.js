@@ -1,9 +1,10 @@
-const CACHE_NAME = 'programacion-concurrente-v9';
+const CACHE_NAME = 'programacion-concurrente-v10';
 const APP_SHELL = [
   './',
   './index.html',
   './repaso-final.html',
   './repaso-final.md',
+  './osi-modelo.png',
   './manifest.webmanifest',
   './pwa-icon.svg',
   './pwa-icon-maskable.svg'

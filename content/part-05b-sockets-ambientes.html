@@ -156,19 +156,8 @@ fn cliente() -> std::io::Result<()> {
         </ul>
 
         <figure class="diagram">
-          <div class="mermaid">
-flowchart TB
-    subgraph TX["Emisor · el dato baja encapsulándose"]
-      direction TB
-      A7["7 · Aplicación · HTTP, DNS, FTP"] --> A6["6 · Presentación · encoding, cifrado"] --> A5["5 · Sesión · diálogo"] --> A4["4 · Transporte · TCP/UDP · segmento"] --> A3["3 · Red · IP · paquete"] --> A2["2 · Enlace · trama"] --> A1["1 · Física · bits"]
-    end
-    subgraph RX["Receptor · el dato sube desencapsulándose"]
-      direction TB
-      B1["1 · Física · bits"] --> B2["2 · Enlace · trama"] --> B3["3 · Red · IP · paquete"] --> B4["4 · Transporte · TCP/UDP · segmento"] --> B5["5 · Sesión · diálogo"] --> B6["6 · Presentación · encoding, cifrado"] --> B7["7 · Aplicación · HTTP, DNS, FTP"]
-    end
-    A1 ==>|medio físico| B1
-          </div>
-          <figcaption>Las 7 capas OSI. Cada capa <code>N</code> ofrece un <strong>servicio</strong> a la <code>N+1</code> y dialoga con su <strong>par</strong> del otro extremo mediante el protocolo de nivel <code>N</code>. El dato <strong>baja</strong> por la pila del emisor sumando encabezados (encapsulamiento), viaja por el medio físico y <strong>sube</strong> por la del receptor quitándolos. PDU por capa: <em>bit → trama → paquete → segmento</em>.</figcaption>
+          <img src="osi-modelo.png" alt="Modelo OSI de 7 capas: Host A y Host B con sus pilas Application, Presentation, Session, Transport, Network, Data link, Physical; protocolos par a par punteados; dos routers intermedios que implementan solo las capas 1 a 3; y la columna de PDU por capa (APDU, PPDU, SPDU, TPDU, Packet, Frame, Bit)." loading="lazy">
+          <figcaption>Modelo OSI (diapositiva de la teórica, «Repaso de redes»). Cada <strong>host</strong> tiene la pila de 7 capas; las capas homólogas dialogan con su <strong>par</strong> del otro extremo mediante el <em>protocolo</em> de ese nivel (flechas punteadas horizontales), y las capas adyacentes se comunican por su <em>interfaz</em> (flechas verticales). Los <strong>routers</strong> intermedios implementan solo las capas 1-3 (física, enlace, red). La columna derecha nombra la <strong>PDU</strong> intercambiada en cada capa: APDU, PPDU, SPDU, TPDU, Packet (paquete), Frame (trama) y Bit.</figcaption>
         </figure>
 
         <details>
