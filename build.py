@@ -185,13 +185,8 @@ def escape_code_blocks(markup):
 # tal como aprendizaje-automatico alterna entre su Apunte y su Resumen.
 # ---------------------------------------------------------------------------
 def build_shell(template, content_html, toc_html, nav_link, page_title=None,
-                description=None, toc_link_base=''):
+                description=None):
     doc = template
-
-    # En el repaso, los enlaces del índice apuntan al apunte completo
-    # (index.html#ancla) para poder profundizar cada tema desde el pantallazo.
-    if toc_link_base:
-        toc_html = toc_html.replace('href="#', 'href="%s#' % toc_link_base)
 
     # palette
     doc = re.sub(r':root \{[^}]*\}', ROOT_LIGHT, doc, count=1)
@@ -481,21 +476,23 @@ def main():
     template = read(TEMPLATE)
     raw_content = load_content()
     toc_html = read(os.path.join(HERE, 'toc.html'))
+    toc_repaso = read(os.path.join(HERE, 'toc-repaso.html'))
 
     content_html = escape_code_blocks(raw_content)
     raw_repaso = read(os.path.join(HERE, 'content', 'repaso-final.html'))
     repaso_content = escape_code_blocks(raw_repaso)
 
-    # Apunte completo (index.html): enlace de barra lateral -> Repaso final.
+    # Apunte completo (index.html): índice del apunte, enlace de barra lateral -> Repaso final.
     index = build_shell(template, content_html, toc_html, NAV_TO_REPASO)
     write(os.path.join(HERE, 'index.html'), index)
 
-    # Repaso final (repaso-final.html): MISMO shell, otro <main>, enlace -> Apunte.
-    repaso = build_shell(template, repaso_content, toc_html, NAV_TO_APUNTE,
+    # Repaso final (repaso-final.html): MISMO shell, con su PROPIO índice (anclas
+    # in-page a las secciones del repaso, para que buscador y navegación funcionen)
+    # y enlace de barra lateral -> Apunte.
+    repaso = build_shell(template, repaso_content, toc_repaso, NAV_TO_APUNTE,
                          page_title='Repaso final | Programación Concurrente',
                          description='Repaso final de Programación Concurrente, FIUBA: '
-                                     'el mínimo teórico para aprobar un final.',
-                         toc_link_base='index.html')
+                                     'el mínimo teórico para aprobar un final.')
     write(os.path.join(HERE, 'repaso-final.html'), repaso)
 
     # Mirror portable en Markdown del repaso.

@@ -3,11 +3,13 @@
 [Abrir apunte](index.html)
 
 
-**El mínimo indispensable para aprobar un final. Sin chamuyo.** Definiciones concisas, comparaciones y esquemas de lo que *siempre* cae. Cuando algo no te cierre, abrí el apunte completo (o tocá cualquier tema en el índice).
+**El mínimo indispensable para aprobar un final. Sin chamuyo.** Definiciones concisas, comparaciones y esquemas de lo que *siempre* cae. Buscá con el buscador, navegá con el índice, y cuando algo no te cierre abrí el [apunte completo](index.html).
 
-[← Volver al apunte completo](index.html)
+<a id="rf-final"></a>
 
-Cómo es el final (patrón real de la cátedra).
+## 00. Cómo es el final
+
+Patrón real de la cátedra.
 
 5 ejercicios, casi todo
 
@@ -33,7 +35,9 @@ definición exacta
 
 primero, después el ejemplo/diagrama, y cerrá con el trade-off. Los puntos se ganan en las palabras precisas, no en la extensión.
 
-## 1 · Corrección: safety, liveness y los cuatro fantasmas
+<a id="rf-correccion"></a>
+
+## 01. Corrección: safety, liveness y los cuatro fantasmas
 
 **Concurrencia** = varias tareas *progresan* en simultáneo (intercaladas); **paralelismo** = varias se *ejecutan* a la vez (varios cores). La salida de un programa concurrente **correcto** es siempre la misma; lo que varía es el *interleaving*, no el resultado.
 
@@ -58,7 +62,9 @@ primero, después el ejemplo/diagrama, y cerrá con el trade-off. Los puntos se 
 
 **Deadlock — 4 condiciones de Coffman** (deben darse las cuatro juntas; basta romper una para prevenirlo): **exclusión mutua**, **hold &amp; wait** (retener y esperar), **no preemption** (no expropiación) y **espera circular**. Estrategias: *prevención* (negar una condición), *evitación* (banquero), *detección + recuperación* (grafo de recursos + abortar), *avestruz* (ignorarlo).
 
-## 2 · Rust para concurrencia, en diez líneas
+<a id="rf-rust"></a>
+
+## 02. Rust para concurrencia, en diez líneas
 
 - **Ownership:** cada valor tiene un dueño; al salir de scope se libera (`drop`).
 - **Borrowing:** o *una* referencia mutable, o *N* compartidas inmutables — nunca las dos. Esto elimina data races *en tiempo de compilación* («fearless concurrency»).
@@ -72,7 +78,9 @@ primero, después el ejemplo/diagrama, y cerrá con el trade-off. Los puntos se 
 | `Arc&lt;Mutex&lt;T&gt;&gt;` | Compartir *y mutar* entre threads con exclusión mutua. |
 | `Arc&lt;RwLock&lt;T&gt;&gt;` | Muchos lectores *o* un escritor. |
 
-## 3 · Modelos de concurrencia: cuándo uso cada uno
+<a id="rf-modelos"></a>
+
+## 03. Modelos de concurrencia: cuándo uso cada uno
 
 | Modelo | Idea | Cuándo |
 | --- | --- | --- |
@@ -99,7 +107,9 @@ primero, después el ejemplo/diagrama, y cerrá con el trade-off. Los puntos se 
 
 **Async:** un `Future` es una máquina de estados que se avanza con `poll` (devuelve `Pending` o `Ready`); el *executor* reanuda la tarea cuando el recurso está listo, sin bloquear el thread. No «comprime el stack»: la memoria de la tarea sigue viva.
 
-## 4 · Sincronización: mecanismos
+<a id="rf-sincronizacion"></a>
+
+## 04. Sincronización: mecanismos
 
 | Mecanismo | Qué garantiza |
 | --- | --- |
@@ -147,7 +157,9 @@ notifyAll()
 
 (hay que tener el monitor adquirido para llamarlos).
 
-## 5 · Problemas clásicos (esencia en una línea)
+<a id="rf-clasicos"></a>
+
+## 05. Problemas clásicos (esencia en una línea)
 
 | Problema | Qué ilustra | Solución típica |
 | --- | --- | --- |
@@ -157,7 +169,9 @@ notifyAll()
 | **Barbero dormilón** | Sincronizar un servidor que duerme cuando no hay trabajo. | Semáforos de clientes/barbero + mutex de la sala de espera. |
 | **Fumadores** | Límite de los semáforos «pelados»; hace falta un intermediario. | Agente + *pushers* que combinan los ingredientes. |
 
-## 6 · Redes de Petri
+<a id="rf-petri"></a>
+
+## 06. Redes de Petri
 
 Herramienta **gráfica y matemática** para modelar sistemas concurrentes; es un **grafo dirigido bipartito** con dos tipos de nodos.
 
@@ -201,12 +215,14 @@ flowchart LR
     PR --> BUF(("buffer = 0"))
     BUF --> CO["consumir"]
     CO --> NF
-        
+          
 ```
 
 *Productor-consumidor acotado: producir consume de notFull y deja un token en buffer; consumir consume de buffer y devuelve a notFull. Nunca hay más de N ítems.*
 
-## 7 · Transacciones y control de concurrencia
+<a id="rf-transacciones"></a>
+
+## 07. Transacciones y control de concurrencia
 
 **ACID:** *Atomicidad* (todo o nada), *Consistencia* (de un estado válido a otro), *Isolation/aislamiento* (como si fueran seriales), *Durabilidad* (una vez commit, persiste).
 
@@ -239,7 +255,7 @@ sequenceDiagram
     C->>B: GLOBAL_COMMIT
     A-->>C: ACK
     B-->>C: ACK
-        
+          
 ```
 
 *Camino feliz del 2PC. Si en la fase 1 alguien vota ABORT, la fase 2 es GLOBAL_ABORT para todos.*
@@ -250,7 +266,9 @@ sequenceDiagram
 - **Wound-Wait:** si el que pide es *más viejo*, **desaloja** al joven que lo tiene; si es más joven, **espera**. Preemptivo, menos aborts.
 - Ambos rompen la **espera circular** permitiendo esperar en una sola dirección del tiempo.
 
-## 8 · Ambientes distribuidos
+<a id="rf-distribuidos"></a>
+
+## 08. Ambientes distribuidos
 
 Múltiples **entidades** separadas espacialmente que se comunican **solo por mensajes** (sin memoria compartida). Es el modelo formal para razonar algoritmos distribuidos.
 
@@ -266,7 +284,9 @@ Múltiples **entidades** separadas espacialmente que se comunican **solo por men
 - **Ring (anillo):** quien detecta la caída manda `ELECTION` con su ID a su sucesor; cada uno agrega su ID; al dar la vuelta gana el **ID más alto** y circula `COORDINATOR`. **Bully**: el que se despierta desafía a los de ID mayor; si nadie responde, se corona. Ambos eligen al de **mayor ID**.
 - **Exclusión mutua distribuida:** *centralizado* (simple pero SPOF), *Ricart-Agrawala* (sin coordinador pero N² mensajes) y *token ring* (justo pero con latencia).
 
-## 9 · Redes, OSI y sockets
+<a id="rf-redes"></a>
+
+## 09. Redes, OSI y sockets
 
 | # | Capa OSI | Objetivo |
 | --- | --- | --- |
@@ -301,7 +321,9 @@ entre procesos/máquinas
 
 , envían bytes (hay que serializar y delimitar), sufren pérdida/reorden/latencia y relojes no sincronizados. Un channel es unidireccional; una conexión TCP, bidireccional.
 
-## 10 · Diseño de un sistema (Ejercicio 5)
+<a id="rf-diseno"></a>
+
+## 10. Diseño de un sistema (Ejercicio 5)
 
 Receta para el ejercicio de diseño (el que más puntos vale):
 
@@ -335,12 +357,16 @@ impl Handler<Reservar> for Inventario {
 }
 ```
 
-## 11 · Testing (por si cae)
+<a id="rf-testing"></a>
+
+## 11. Testing (por si cae)
 
 - **Loom:** explora *exhaustivamente* los interleavings posibles de un test concurrente para encontrar data races/deadlocks que un run normal no detecta.
 - **Mockall:** genera mocks de traits para aislar dependencias y testear sin la implementación real.
 
-## 12 · Machete: definiciones de una línea
+<a id="rf-machete"></a>
+
+## 12. Machete: definiciones de una línea
 
 - **Sección crítica:** bloque donde se accede a recursos compartidos; debe respetar EM, no-deadlock y no-starvation.
 - **Deadlock:** espera cíclica por recursos; requiere las 4 condiciones de Coffman.

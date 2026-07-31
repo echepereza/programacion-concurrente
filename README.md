@@ -107,8 +107,9 @@ programacion-concurrente/
 │   ├── part-05c-testing.html             (cap.  21)
 │   ├── part-06-anexos.html               (anexos A, B, C)
 │   └── repaso-final.html                 (repaso compacto para el final)
-├── toc.html                # Índice de la barra lateral  ← FUENTE
-├── build.py                # Ensambla index.html y repaso-final.html (mismo shell) desde content/ + toc.html
+├── toc.html                # Índice del apunte           ← FUENTE
+├── toc-repaso.html         # Índice del repaso final      ← FUENTE
+├── build.py                # Ensambla index.html y repaso-final.html (mismo shell) desde content/ + tocs
 │
 ├── sw.js                   # Service worker (offline)
 ├── manifest.webmanifest    # Manifiesto PWA
@@ -239,9 +240,11 @@ Es un ensamblador en Python (sin dependencias). En cada corrida:
 2. Le **reemplaza** la paleta de colores, la marca, el índice (`toc.html`) y el contenido
    (concatena `content/part-*.html` en orden).
 3. **Escapa** los bloques `<pre data-code>` e **inyecta** Mermaid.
-4. Arma **dos páginas con el mismo shell**: `index.html` (apunte, enlace → «Repaso final») y
-   `repaso-final.html` (repaso compacto, enlace → «Apunte»; en su índice los temas apuntan a
-   `index.html#ancla` para profundizar). Genera también `repaso-final.md` (mirror Markdown).
+4. Arma **dos páginas con el mismo shell**: `index.html` (apunte, índice `toc.html`, enlace →
+   «Repaso final») y `repaso-final.html` (repaso compacto, índice propio `toc-repaso.html` con
+   anclas in-page para que el buscador y la navegación funcionen dentro del repaso, enlace →
+   «Apunte»). Cada sección del repaso es un `.chapter` con `id` y `data-title` (igual que el
+   apunte), así el buscador la indexa. Genera también `repaso-final.md` (mirror Markdown).
 
 > Para *rebuildear* necesitás la carpeta hermana `aprendizaje-automatico` (es la plantilla).
 > El `index.html` ya generado **no** la necesita: es autocontenido y se publica solo.

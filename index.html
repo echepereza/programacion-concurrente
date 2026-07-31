@@ -2849,6 +2849,23 @@ fn cliente() -&gt; std::io::Result&lt;()&gt; {
           <li><strong>Tipos de servicio:</strong> <em>sin conexión</em> (UDP puro, sin control de flujo ni errores), <em>sin conexión con ACK</em> (acuse por cada dato, más confiable sin enlace dedicado) y <em>con conexión</em> (TCP: tres fases —establecimiento, datos, cierre— con control de flujo y de errores).</li>
           <li><strong>OSI:</strong> estándar de 7 capas que define interfaces y protocolos en cada nivel. <strong>TCP/IP</strong> es la pila real (IP, TCP, UDP y protocolos de aplicación como HTTP, FTP).</li>
         </ul>
+
+        <figure class="diagram">
+          <div class="mermaid">
+flowchart TB
+    subgraph TX["Emisor · el dato baja encapsulándose"]
+      direction TB
+      A7["7 · Aplicación · HTTP, DNS, FTP"] --> A6["6 · Presentación · encoding, cifrado"] --> A5["5 · Sesión · diálogo"] --> A4["4 · Transporte · TCP/UDP · segmento"] --> A3["3 · Red · IP · paquete"] --> A2["2 · Enlace · trama"] --> A1["1 · Física · bits"]
+    end
+    subgraph RX["Receptor · el dato sube desencapsulándose"]
+      direction TB
+      B1["1 · Física · bits"] --> B2["2 · Enlace · trama"] --> B3["3 · Red · IP · paquete"] --> B4["4 · Transporte · TCP/UDP · segmento"] --> B5["5 · Sesión · diálogo"] --> B6["6 · Presentación · encoding, cifrado"] --> B7["7 · Aplicación · HTTP, DNS, FTP"]
+    end
+    A1 ==>|medio físico| B1
+          </div>
+          <figcaption>Las 7 capas OSI. Cada capa <code>N</code> ofrece un <strong>servicio</strong> a la <code>N+1</code> y dialoga con su <strong>par</strong> del otro extremo mediante el protocolo de nivel <code>N</code>. El dato <strong>baja</strong> por la pila del emisor sumando encabezados (encapsulamiento), viaja por el medio físico y <strong>sube</strong> por la del receptor quitándolos. PDU por capa: <em>bit → trama → paquete → segmento</em>.</figcaption>
+        </figure>
+
         <details>
           <summary>Matices de clase (para no perder puntos)</summary>
           <ul class="study-list">
