@@ -1,4 +1,4 @@
-const CACHE_NAME = 'programacion-concurrente-v11';
+const CACHE_NAME = 'programacion-concurrente-v12';
 const APP_SHELL = [
   './',
   './index.html',

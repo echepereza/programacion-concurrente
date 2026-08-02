@@ -3064,7 +3064,7 @@ impl Handler&lt;Reservar&gt; for Producto {
         <div class="callout warning"><strong>Moraleja del ejercicio de diseño:</strong> la exclusión mutua centralizada «resuelve» la sobreventa pero mete un cuello de botella (SPOF) y mata la usabilidad si el lock se sostiene durante validación y pago. La cátedra espera que <strong>reserves el recurso rápido (con timeout), liberes el lock, y recién ahí valides y cobres</strong>, y que <strong>distingas lecturas de escrituras</strong>. Vale igual para la venta online y para las reservas de mesas del final 29/07.</div>
       </section>
 
-      <section class="chapter" id="ejercicios" data-title="banco de ejercicios preguntas de final parciales resueltos por tipo de ejercicio busy wait analisis codigo semaforo condvar if while spurious wakeup verdadero falso async elegir modelo pseudocodigo N threads productor consumidor lector escritor petri restaurante actores seccion critica programa modelo correccion safety liveness deadlock wait-die wound-wait grafo de alcance fork join work stealing osi capas sockets streaming tcp udp channels unix ambientes distribuidos eventos ring costo complejidad estado interno entradas conciertos 2pc votos eleccion mesa contador">
+      <section class="chapter" id="ejercicios" data-title="banco de ejercicios preguntas de final parciales resueltos por tipo de ejercicio busy wait analisis codigo semaforo condvar if while spurious wakeup verdadero falso async elegir modelo pseudocodigo N threads productor consumidor lector escritor petri restaurante actores seccion critica programa modelo correccion safety liveness deadlock wait-die wound-wait grafo de alcance fork join work stealing osi capas sockets streaming tcp udp channels unix ambientes distribuidos eventos ring costo complejidad estado interno entradas conciertos 2pc votos eleccion mesa contador mutex monitor barrera condition variable waitc signalc zombie estados proceso locks rust envenenado poisoned future await pin piñata tarea executor cliente servidor iterativo concurrente middleware bully token transaccion acid primitivas private workspace write ahead log wal 2pl timestamp optimista deteccion deadlock distribuido centralizado control de concurrencia supermercado pasajes micros reserva restaurante estacion carga tecnicos parche entidad accion regla comportamiento conocimiento restricciones temporales">
         <div class="chapter-head">
           <div class="chapter-number">B</div>
           <div><h2>Banco de ejercicios y preguntas de final</h2></div>
@@ -3189,6 +3189,56 @@ handle.join().unwrap();</code></pre>
           <p>La solución correcta se modela en Petri como el <a href="#petri">productor-consumidor con buffer acotado (§14, Ej 2)</a> — justo lo que pedía el Ej 4 del recuperatorio.</p>
         </details>
 
+        <details>
+          <summary>Comparar los efectos negativos: deadlock, race condition, starvation y busy-wait</summary>
+          <ul class="study-list">
+            <li><strong>Deadlock:</strong> un conjunto de procesos queda bloqueado <em>indefinidamente</em>, cada uno esperando un recurso que otro del conjunto tiene. Rompe <em>liveness</em>: esos procesos no progresan nunca; si son críticos, el sistema parece «congelado».</li>
+            <li><strong>Race condition:</strong> dos o más acceden a estado compartido sin sincronización y el resultado depende del orden. Efecto: bug intermitente, difícil de reproducir, datos corruptos.</li>
+            <li><strong>Starvation:</strong> un proceso siempre es postergado y nunca obtiene el recurso, aunque el sistema en conjunto avanza. Efecto: injusticia / falta de <em>fairness</em> (falla individual). Se mitiga ordenando por antigüedad (wait-die/wound-wait).</li>
+            <li><strong>Busy-wait:</strong> un hilo gira en un loop chequeando una condición y quema CPU. Efecto: mal uso de CPU que degrada a los demás aunque la lógica sea correcta; se corrige bloqueándose (semáforo/condvar). Ver <a href="#correccion">§10</a>.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Las 4 condiciones de Coffman para que ocurra un deadlock</summary>
+          <p>Un deadlock requiere las <strong>cuatro</strong> simultáneamente (romper una alcanza para prevenirlo): <strong>exclusión mutua</strong>, <strong>retención y espera</strong> (hold &amp; wait), <strong>no apropiación</strong> (no preemption) y <strong>espera circular</strong>. Ver <a href="#correccion">§10</a>.</p>
+        </details>
+        <details>
+          <summary>Estados de ejecución de un proceso (y el estado «zombie»)</summary>
+          <p>Un proceso pasa por <strong>nuevo → listo → en ejecución → en espera/bloqueado → terminado</strong>; el <em>scheduler</em> lo mueve según CPU y eventos. Al terminar con <code>exit</code> no desaparece de inmediato: queda <strong>zombie</strong> (ya liberó sus recursos) hasta que su proceso <em>padre</em> lo «cosecha» (pregunta por él), y recién ahí muere por completo.</p>
+        </details>
+        <details>
+          <summary>¿Qué es un semáforo? Operaciones y variables internas</summary>
+          <p>Mecanismo de sincronización con dos campos: un <strong>contador entero no negativo</strong> (recursos disponibles) y un <strong>conjunto/cola de procesos bloqueados</strong>. Operaciones atómicas (el SO lo garantiza): <code>wait</code> resta 1 y, si el contador queda &lt; 0, bloquea al proceso; <code>signal</code> suma 1 y despierta a <strong>algún</strong> proceso en espera <em>al azar</em> (no por orden). Ver <a href="#semaforos">§12</a>.</p>
+        </details>
+        <details>
+          <summary>¿Qué es un mutex? Operaciones y diferencia con el semáforo</summary>
+          <p>Garantiza exclusión mutua: solo un proceso accede a la sección crítica a la vez. A diferencia del semáforo, tiene <strong>noción de dueño</strong>: únicamente quien hizo <code>lock</code> puede hacer <code>unlock</code>. <code>lock</code> toma el mutex (o bloquea si está ocupado) y <code>unlock</code> lo libera. En Rust el guard lo libera solo por RAII al salir del scope. Ver <a href="#locks">§11</a>.</p>
+        </details>
+        <details>
+          <summary>¿Qué es una barrera y qué operación tiene?</summary>
+          <p>Coordina a un conjunto de procesos/threads obligándolos a <strong>esperar en un punto</strong> hasta que <em>todos</em> lleguen. Tiene esencialmente una única operación de espera: el que llega se bloquea; cuando llega el <strong>último</strong>, se liberan todos y continúan. Ver <a href="#semaforos">§12</a>.</p>
+        </details>
+        <details>
+          <summary>¿Qué es un monitor? Operaciones y de qué se compone</summary>
+          <p>Herramienta de sincronización que <strong>encapsula datos + procedimientos + exclusión mutua</strong>: solo un proceso ejecuta dentro a la vez. Usa <strong>variables de condición</strong> (no guardan valor; mantienen una cola FIFO de bloqueados) con tres operaciones atómicas: <code>waitC</code> (bloquea y libera el monitor), <code>signalC</code> (despierta al primero de la cola; no hace nada si está vacía) y <code>empty</code> (¿hay esperando?). Se compone de: nombre, variables internas, procedimientos que las acceden, interfaz pública, inicialización y variables de condición. Ver <a href="#semaforos">§12</a>.</p>
+        </details>
+        <details>
+          <summary>Semáforo vs Monitor: similitudes, diferencias y cuándo usar cada uno</summary>
+          <p>Ambos coordinan procesos y serializan el acceso a recursos, evitando races. <strong>Diferencias:</strong> el <code>wait</code> del semáforo bloquea <em>solo</em> si el contador es 0, mientras que <code>waitC</code> <em>siempre</em> bloquea; <code>signal</code> siempre tiene efecto, <code>signalC</code> no hace nada si la cola está vacía; el semáforo despierta <em>al azar</em>, el monitor por <strong>FIFO</strong>; el monitor <strong>encapsula</strong> datos y protocolo (menos errores), el semáforo no.</p>
+          <ul class="study-list">
+            <li><strong>Monitor</strong> cuando el recurso es <em>complejo</em> con varias condiciones (ej.: cola de impresión, buffer con condiciones): conviene encapsular.</li>
+            <li><strong>Semáforo</strong> cuando solo hay que contar <em>accesos a N recursos idénticos</em> (ej.: N impresoras, conexiones, lugares de estacionamiento): más simple y directo.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Productor-consumidor con semáforos</summary>
+          <p>Dos semáforos: <code>notFull</code> (empieza en <code>N</code>, la capacidad) y <code>notEmpty</code> (empieza en 0). <strong>Productor:</strong> <code>wait(notFull)</code> → deposita → <code>signal(notEmpty)</code>. <strong>Consumidor:</strong> <code>wait(notEmpty)</code> → consume → <code>signal(notFull)</code>. Con un buffer acotado se agrega exclusión mutua sobre el buffer para evitar races. Ver <a href="#clasicos">§13</a>.</p>
+        </details>
+        <details>
+          <summary>Locks en Unix vs Rust, tipos y «lock envenenado»</summary>
+          <p><strong>Unix:</strong> locks sobre archivos, de tipo <em>advisory</em> (los procesos deben respetarlos voluntariamente); hay <em>compartidos</em> (lectura, varios a la vez) y <em>exclusivos</em> (escritura, uno solo). <strong>Rust:</strong> <code>Mutex</code> y <code>RwLock</code> de <code>std::sync</code>, regulados por los traits <code>Send</code>/<code>Sync</code> (seguridad en compilación) y liberados por <strong>RAII</strong> (el guard libera al salir del scope). Un <strong>lock envenenado</strong> queda así cuando un hilo hace <code>panic!</code> teniendo el lock (datos posiblemente inconsistentes): los siguientes <code>lock</code> devuelven <code>Err</code> para avisar. Ver <a href="#locks">§11</a>.</p>
+        </details>
+
         <h3>Ej 2 — Modelos, fork-join y Redes de Petri</h3>
         <details>
           <summary>Red Ordinaria vs Red General de Petri</summary>
@@ -3253,6 +3303,48 @@ flowchart LR
           <p>Productor-consumidor con buffer acotado: resuelto en <a href="#petri">§14</a> (lugares <code>p5</code> ítems / <code>p6</code> huecos). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan <strong>arcos inhibidores</strong> que frenan a los lectores si hay un escritor esperando (ver <a href="#clasicos">§13</a> y <a href="#petri">§14</a>).</p>
         </details>
 
+        <details>
+          <summary>¿Qué modelos de concurrencia se ven? ¿Cómo se protege el estado compartido?</summary>
+          <p>Los modelos: <strong>estado mutable/compartido</strong> (comparten variables → requiere sincronización explícita, el más propenso a races), <strong>fork-join</strong> (subtareas independientes en paralelo, sin estado compartido), <strong>canales/mensajes</strong> (se comunican enviando mensajes, sin memoria compartida; ej.: sockets), <strong>programación asincrónica</strong> (tareas livianas cooperativas, ceden en I/O) y <strong>actores</strong> (abstracción del pasaje de mensajes, estado privado). Para <strong>proteger el estado compartido</strong> se <em>serializa</em> el acceso: se marcan regiones (secciones críticas) que no pueden superponerse; si un procedimiento del conjunto se ejecuta, otro que quiera entrar debe esperar. Ver <a href="#modelos">§4</a>.</p>
+        </details>
+        <details>
+          <summary>Fork-join: performance ideal y desventajas</summary>
+          <p><strong>Performance ideal:</strong> <em>speedup lineal</em>, <code>t_secuencial / N_threads</code>, siempre que las tareas estén balanceadas y el costo de sincronización/combinación sea despreciable. <strong>Desventajas:</strong> tareas <em>desbalanceadas</em> (unas tardan más), costo de sincronización/combinación en el <code>join</code> (esperar a que todas terminen), y que <em>no todo problema</em> es subdividible en tareas independientes. Ver <a href="#forkjoin">§5</a>.</p>
+        </details>
+        <details>
+          <summary>Async: future, await, tarea, Pin y modelo «piñata»</summary>
+          <ul class="study-list">
+            <li><strong>Future:</strong> estructura que representa el resultado de un cómputo asincrónico que <em>todavía no terminó</em> pero estará disponible después.</li>
+            <li><strong>async / await:</strong> <code>async</code> marca una función cuyo resultado es un future; <code>await</code> <em>suspende</em> la tarea hasta que el future esté listo <strong>sin bloquear el thread</strong> (devuelve el control al executor). <code>block_on</code> ejecuta un async de forma sincrónica bloqueando el thread (no usar dentro de async).</li>
+            <li><strong>Tarea:</strong> unidad liviana de ejecución async administrada por el executor; puede suspenderse/reanudarse con <code>await</code>.</li>
+            <li><strong>Pin:</strong> garantiza que un objeto no cambie de dirección en memoria; hace falta porque los futures pueden ser <em>auto-referenciados</em> y moverse invalidaría esas referencias.</li>
+            <li><strong>Modelo piñata:</strong> la tarea se «abre» en cada <code>await</code>, se suspende y devuelve el control al executor, que intercala otras tareas; así se atienden muchas conexiones con pocos threads.</li>
+          </ul>
+          <p><strong>Cuándo usar async vs threads:</strong> async para muchas tareas <em>I/O-bound</em> con mucha espera (ej.: servidor web con miles de conexiones); threads para tareas <em>CPU-bound</em> que aprovechan varios núcleos (ej.: procesar imágenes). Ver <a href="#async">§7</a>.</p>
+        </details>
+        <details>
+          <summary>Funciones de entrada y salida de una transición (Petri)</summary>
+          <p>Para una transición <code>t</code>: sus <strong>lugares de entrada</strong> <code>I(t)</code> son los <code>p</code> con arco <code>p→t</code>, y sus <strong>lugares de salida</strong> <code>O(t)</code> los <code>p'</code> con arco <code>t→p'</code>. <code>t</code> está <strong>habilitada</strong> si cada entrada tiene <code>M(p) ≥ W(p,t)</code>; al <strong>dispararse</strong> consume <code>W(p,t)</code> de cada entrada y produce <code>W(t,p')</code> en cada salida. Ver <a href="#petri">§14</a>.</p>
+        </details>
+        <details>
+          <summary>[Modelado Petri] Técnicos con diagnósticos y parche del ingeniero</summary>
+          <p>Hasta <strong>3 técnicos</strong> diagnostican concurrentemente sobre la BD; tras <strong>3 diagnósticos</strong> un ingeniero aplica un parche antes de permitir nuevos; el parche solo puede correr si <em>nadie</em> está diagnosticando (exclusión mutua entre técnicos e ingeniero).</p>
+          <ul class="study-list">
+            <li><strong>Lugares:</strong> <code>cupos_BD</code> (marca inicial 3: técnicos que pueden entrar a la vez), <code>diagnosticando</code> (técnicos activos, para el mutuamente-excluyente con el parche), <code>contador</code> (diagnósticos completados; a los 3 habilita el parche), <code>listo_parche</code>/<code>parcheando</code>.</li>
+            <li><strong>Transiciones atómicas:</strong> <code>iniciar_diagnóstico</code> (consume 1 de <code>cupos_BD</code>), <code>finalizar_diagnóstico</code> (repone cupo y suma 1 al <code>contador</code>), <code>aplicar_parche</code> (habilitada cuando <code>contador = 3</code> y no hay técnicos diagnosticando; usa un <strong>arco inhibidor</strong> desde <code>diagnosticando</code> para bloquearse si hay alguien activo, y resetea el contador).</li>
+          </ul>
+          <p>La exclusión ingeniero↔técnicos se garantiza con el arco inhibidor (o un lugar «BD_libre» que el parche toma en exclusiva). Se pide además el <a href="#petri">grafo de alcance</a> de una ejecución posible.</p>
+        </details>
+        <details>
+          <summary>[Modelado Petri] Estación de carga de vehículos eléctricos</summary>
+          <p>Hasta <strong>2 autos</strong> cargan a la vez; tras <strong>4 cargas</strong> completas se exige mantenimiento; el mantenimiento solo corre si <em>nadie</em> está cargando; acciones atómicas.</p>
+          <ul class="study-list">
+            <li><strong>Lugares:</strong> <code>cargadores_libres</code> (marca inicial 2), <code>cargando</code> (autos activos), <code>cargas_hechas</code> (cuenta hasta 4), <code>mantenimiento_pendiente</code>.</li>
+            <li><strong>Transiciones:</strong> <code>iniciar_carga</code> (consume un cargador libre), <code>finalizar_carga</code> (repone cargador y suma 1 a <code>cargas_hechas</code>), <code>realizar_mantenimiento</code> (habilitada con <code>cargas_hechas = 4</code> y con un <strong>arco inhibidor</strong> desde <code>cargando</code> que la bloquea si hay algún auto cargando; al dispararse resetea el contador).</li>
+          </ul>
+          <p>El arco inhibidor desde <code>cargando</code> hacia <code>realizar_mantenimiento</code> es lo que <strong>garantiza que el mantenimiento solo se hace con la estación vacía</strong>. Se pide el grafo de alcance de una ejecución. Ver <a href="#petri">§14</a>.</p>
+        </details>
+
         <h3>Ej 3 — Redes y sockets</h3>
         <details>
           <summary>Las 7 capas del modelo OSI</summary>
@@ -3294,6 +3386,23 @@ flowchart LR
           <p>Ambos pueden ser sincrónicos o asincrónicos.</p>
         </details>
 
+        <details>
+          <summary>Modelo cliente-servidor: arquitecturas y tipos de servidor (con diagrama)</summary>
+          <p><strong>Arquitecturas:</strong> de <em>dos niveles</em> (cliente y servidor en contacto directo) y de <em>tres niveles</em> (un <strong>middleware</strong> entre ambos que aporta seguridad y balanceo de carga). <strong>Tipos de servidor:</strong> <em>iterativo</em> (atiende una petición a la vez) y <em>concurrente</em> (atiende varias a la vez). El <strong>cliente</strong> es activo (inicia); el <strong>servidor</strong> es pasivo (espera y responde).</p>
+          <figure class="diagram">
+            <div class="mermaid">
+sequenceDiagram
+    participant C as Cliente (activo)
+    participant S as Servidor (pasivo)
+    S->>S: bind + listen (espera)
+    C->>S: connect + request
+    S->>S: procesa (iterativo o concurrente)
+    S-->>C: response
+            </div>
+            <figcaption>Cliente-servidor: el servidor escucha y responde; si es concurrente, atiende varias conexiones a la vez (thread-per-connection, pool o async). Ver <a href="#sockets">§18</a>.</figcaption>
+          </figure>
+        </details>
+
         <h3>Ej 4 — Ambientes distribuidos</h3>
         <details>
           <summary>Tipos de eventos en un ambiente distribuido</summary>
@@ -3310,6 +3419,77 @@ flowchart LR
         <details>
           <summary>¿Cómo está compuesto el estado interno de una entidad y cómo se modifica?</summary>
           <p>El estado interno <code>σ(x,t)</code> es el <strong>contenido de los registros</strong> de <code>x</code> más el <strong>valor de su reloj</strong> <code>c_x</code> en el instante <code>t</code>. Se modifica <strong>solo por la ocurrencia de eventos</strong>, y es <strong>determinístico</strong>: si <code>x</code> recibe el mismo evento en dos ejecuciones y su estado interno es igual en ambas, el nuevo estado también será igual. Ver <a href="#ambientes">§19</a>.</p>
+        </details>
+
+        <details>
+          <summary>¿Qué es una entidad y qué capacidades tiene?</summary>
+          <p>La <strong>entidad</strong> es la <em>unidad de cómputo</em> de un sistema distribuido: un proceso, hilo, actor, nodo o máquina. Es <strong>reactiva</strong> (solo responde a eventos). <strong>Capacidades:</strong> mantener un estado interno, procesar información localmente, recibir eventos externos, ejecutar acciones (atómicas) y comunicarse con otras entidades. Ver <a href="#ambientes">§19</a>.</p>
+        </details>
+        <details>
+          <summary>Acción, regla, comportamiento y conocimiento de una entidad</summary>
+          <ul class="study-list">
+            <li><strong>Acción:</strong> secuencia <em>finita y atómica</em> de operaciones (se ejecuta toda o nada).</li>
+            <li><strong>Regla:</strong> indica cómo reacciona la entidad ante un evento externo <em>según su estado interno</em> (qué acción ejecutar).</li>
+            <li><strong>Comportamiento:</strong> el conjunto de reglas; se lo llama también <em>protocolo</em> o <em>algoritmo distribuido</em>.</li>
+            <li><strong>Conocimiento (local):</strong> el contenido de la memoria local y lo que se deriva; sin fallas no se pierde. Tipos: <em>información métrica</em> (mediciones de la red: nº de nodos, aristas), <em>propiedades topológicas</em> (forma del grafo: anillo, acíclico) y <em>mapas topológicos</em> (representación de quién está conectado con quién).</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Restricciones temporales de los mensajes</summary>
+          <ul class="study-list">
+            <li><strong>Axioma de llegada:</strong> todo mensaje enviado, en algún momento llega.</li>
+            <li><strong>Retardo finito:</strong> tarda un tiempo finito (la espera no es infinita).</li>
+            <li><strong>Orientación local:</strong> la entidad distingue a quién envía y de quién recibe.</li>
+            <li><strong>Delay acotado:</strong> existe un tope máximo de tiempo (permite definir <em>timeouts</em>).</li>
+            <li><strong>Delay unitario:</strong> el tránsito de un mensaje se toma como una unidad de tiempo (para el «tiempo ideal»).</li>
+          </ul>
+          <p>Ver <a href="#ambientes">§19</a>.</p>
+        </details>
+        <details>
+          <summary>Exclusión mutua distribuida: centralizado, distribuido y token ring (con problemas)</summary>
+          <ul class="study-list">
+            <li><strong>Centralizado:</strong> un proceso <em>líder</em> controla la SC; para entrar se le pide permiso y responde OK si está libre (si no, encola). Simple, pero es <em>único punto de falla</em> y cuello de botella. Conviene en sistemas chicos con servidor confiable.</li>
+            <li><strong>Distribuido:</strong> sin líder; para entrar se pide permiso a <em>todos</em>; cada uno responde OK si no está ni quiere entrar, y si varios quieren, gana el de <strong>timestamp menor</strong> (Ricart-Agrawala). Sin SPOF, pero muchos mensajes y sensible a caídas. Conviene en P2P/sensores.</li>
+            <li><strong>Token ring:</strong> los procesos forman un anillo y circula un <em>token</em>; solo quien lo tiene entra a la SC (no se puede acaparar). No hace falta saber quién está en la SC. Problema: si se pierde el token (proceso cae con él) hay que <em>detectarlo y regenerarlo</em> (timeouts/ping-pong). Conviene en redes estables e industriales.</li>
+          </ul>
+          <p>Ver <a href="#exclusion">§17</a>.</p>
+        </details>
+        <details>
+          <summary>Algoritmos de elección de líder: Bully vs Ring</summary>
+          <p>Asumen ID único conocido por todos. <strong>Bully:</strong> el que detecta la caída avisa <em>solo a los de ID mayor</em>; si alguno responde, ese sigue la elección (gana el de mayor ID); si nadie responde, se autoproclama y avisa a todos. Releva rápido al de <em>mayor capacidad</em>, pero manda muchos mensajes → conviene con jerarquía de nodos (datacenters, clusters). <strong>Ring:</strong> circula un <code>ELECTION(ID)</code> por el anillo acumulando IDs; al volver, el líder es el de <strong>mayor ID</strong> y se propaga <code>COORDINATOR</code>. Pocos mensajes → conviene en redes chicas y estables (sensores). Ver <a href="#exclusion">§17</a>.</p>
+        </details>
+        <details>
+          <summary>Transacciones: qué son, primitivas y propiedades ACID</summary>
+          <p>Una <strong>transacción</strong> es una secuencia de operaciones que se ejecuta como <em>una sola unidad lógica</em>: todo o nada. <strong>Primitivas atómicas:</strong> <code>BEGIN</code>, <code>END</code> (intenta commit), <code>ABORT</code> (deshace), <code>READ</code>, <code>WRITE</code>. <strong>ACID:</strong> <em>Atomicidad</em> (todo o nada), <em>Consistencia</em> (deja el sistema en estado válido), <em>Aislamiento</em> (no interfiere con otras) y <em>Durabilidad</em> (una vez commiteado, permanece). Ver <a href="#transacciones">§15</a>.</p>
+        </details>
+        <details>
+          <summary>Algoritmos de implementación de transacciones</summary>
+          <ul class="study-list">
+            <li><strong>Private workspace:</strong> la transacción trabaja sobre una <em>copia</em> de los archivos; al commit se persiste, al abort se descarta. Simple, pero ocupa mucha memoria y no valida conflictos.</li>
+            <li><strong>Write-ahead log (WAL):</strong> se opera <em>in place</em> pero se anota cada operación en un <em>log</em> antes de tocar el storage; para abortar se deshace leyendo el log de atrás hacia adelante.</li>
+            <li><strong>Commit en dos fases (2PC):</strong> el coordinador manda <code>PREPARE</code>; los participantes votan <code>READY</code>; si todos, manda <code>COMMIT</code>. Ver el diseño de <a href="#ejercicios">Ej 5 (conciertos)</a>.</li>
+            <li><strong>2PL (two-phase locking):</strong> fase de <em>crecimiento</em> (solo toma locks) y de <em>decrecimiento</em> (solo libera; no vuelve a tomar). Garantiza serialización pero puede dar deadlocks.</li>
+            <li><strong>Concurrencia optimista:</strong> modifica sin locks y, al commitear, <em>valida</em> que nadie más tocó los mismos archivos; si hubo conflicto, aborta.</li>
+            <li><strong>Timestamps:</strong> cada archivo tiene timestamp de lectura/escritura; la transacción recibe uno global y aborta si detecta un acceso «fuera de orden». Evita locks.</li>
+          </ul>
+          <p>Ver <a href="#transacciones">§15</a>.</p>
+        </details>
+        <details>
+          <summary>Detección de deadlocks distribuidos: centralizado vs distribuido</summary>
+          <p>En distribuido la detección es más difícil (latencias de red → <em>falsos</em> deadlocks). <strong>Centralizado:</strong> un líder recibe qué recursos tiene y espera cada proceso, arma un <strong>grafo de espera</strong> y si detecta un <em>ciclo</em> hay deadlock (simple, pero SPOF/cuello de botella). <strong>Distribuido:</strong> cada proceso arma su propio grafo a medida que pide o le piden recursos; si <code>A</code> espera a <code>B</code> y luego le llega de <code>B</code> un pedido por un recurso que tiene <code>A</code>, se cierra el ciclo → deadlock (sin SPOF, pero cada nodo debe mantener y chequear su grafo). Ver <a href="#deadlocks">§16</a>.</p>
+        </details>
+        <details>
+          <summary>Control de concurrencia (2PL / timestamps / optimista): caso supermercado en hora pico</summary>
+          <p>Inventario con <strong>alta contención</strong> (muchas transacciones sobre los mismos registros de stock):</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Algoritmo</th><th>Ventaja</th><th>Desventaja en hora pico</th></tr></thead>
+            <tbody>
+              <tr><td><strong>2PL</strong></td><td>Toma los locks de los productos antes de vender → garantiza consistencia del stock.</td><td>Puede haber <em>deadlocks</em> entre vendedores que quieren los mismos productos.</td></tr>
+              <tr><td><strong>Timestamps</strong></td><td>Sin locks → sin deadlocks.</td><td>Muchos <em>aborts/retries</em> y posible starvation con alta contención.</td></tr>
+              <tr><td><strong>Optimista</strong></td><td>Excelente con pocos conflictos y muchas lecturas.</td><td>En hora pico → <em>muchísimos aborts</em>, se desperdicia trabajo, baja performance.</td></tr>
+            </tbody>
+          </table></div>
+          <p><strong>Recomendación:</strong> <strong>2PL con prevención de deadlock</strong> (wait-die o wound-wait). Con mucha contención es preferible bloquear y esperar antes que abortar una y otra vez; minimiza aborts y mantiene el stock consistente. (Optimista convendría en un catálogo con muchas lecturas y pocas escrituras; timestamps, en sistemas distribuidos donde los locks son costosos.) Ver <a href="#transacciones">§15</a>.</p>
         </details>
 
         <h3>Ej 5 — Diseño de sistemas</h3>
@@ -3439,6 +3619,25 @@ let promedio = *total.lock().unwrap() / 100; // tiempo promedio</code></pre>
             </tbody>
           </table></div>
           <p><strong>Clave:</strong> cada estación es un actor con capacidad N (un <code>SyncArbiter</code> de N workers, o un contador de instancias libres + cola FIFO). El paciente, tras cada estación, pide la <em>próxima pendiente disponible</em> en lugar de un orden fijo → circuito eficiente. Nadie hace busy-wait: se encola y se avisa por mensaje.</p>
+        </details>
+        <details>
+          <summary>Compra de pasajes de micros de larga distancia (transaccionalidad)</summary>
+          <p>Igual patrón que conciertos: para evitar reservar un asiento sin pagarlo (o venderlo dos veces) se usa <strong>2PC</strong>. <strong>Coordinador:</strong> Sistema. <strong>Participantes:</strong> Inventario de asientos (disponible/reservado/vendido) y Pago.</p>
+          <ul class="study-list">
+            <li>El usuario elige fecha, origen y destino → el Sistema pide al Inventario los asientos libres.</li>
+            <li>Elige asiento → Inventario lo <strong>reserva con un TTL</strong> (transacción local) para que no lo tome otro mientras paga.</li>
+            <li>Al pagar arranca el 2PC: <code>PREPARE</code> a Inventario (¿sigue reservado y sin expirar? → <code>VOTE_COMMIT</code>) y a Pago (¿autoriza? → <code>VOTE_COMMIT</code>). Si ambos, <code>COMMIT</code>: asiento <em>vendido</em> + captura de fondos + emisión del pasaje.</li>
+          </ul>
+          <p><strong>Casos:</strong> <em>éxito</em> → ambos votan COMMIT y llega el pasaje. <em>Falla</em> (tarjeta rechazada o expiró la reserva) → Pago/Inventario vota ABORT y el asiento vuelve a <em>disponible</em>. Ver el esquema de <a href="#ejercicios">conciertos (arriba)</a> y <a href="#transacciones">§15</a>.</p>
+        </details>
+        <details>
+          <summary>[Diseño] Reserva de restaurantes con confirmación automática y timeout</summary>
+          <p>El cliente elige restaurante, fecha, horario y nº de comensales; la reserva es «automática» y se confirma en <strong>a lo sumo 5 min</strong>, si no hay <em>timeout</em>.</p>
+          <ul class="study-list">
+            <li><strong>Problemas de concurrencia:</strong> (1) dos usuarios reservan la <em>última mesa</em> a la vez → sobreventa/race; (2) la reserva queda «colgada» sin confirmar → hay que liberar por timeout; (3) cae el servidor que administra los locks/estado de las mesas → SPOF.</li>
+            <li><strong>Solución:</strong> un <strong>actor por restaurante</strong> (o por mesa) que <em>serializa</em> las reservas (procesa un mensaje a la vez → sin race): al reservar marca la mesa <code>reservada</code> con un <strong>TTL</strong> y se auto-envía un <code>Timeout</code>; si vence antes de la confirmación, libera la mesa. Alternativa transaccional: 2PL/2PC sobre el registro de la mesa.</li>
+            <li><strong>Casos:</strong> (1) dos por la última mesa → el actor atiende una y a la otra le responde «no disponible». (2) expira el timeout → la mesa vuelve a <em>libre</em>. (3) cae el servidor de locks → sin él nadie puede reservar; se mitiga con réplica/reelección de líder o reconstruyendo el estado desde un log.</li>
+          </ul>
         </details>
       </section>
 
