@@ -2,8 +2,8 @@
 
 Apunte-PWA para preparar el **final de Programación Concurrente**: teoría completa,
 diagramas Mermaid interactivos, problemas clásicos y los **finales reales resueltos**.
-Mismo motor que el repo `aprendizaje-automatico` (buscador, notas, resaltador, modo
-oscuro, offline) con contenido y diseño propios.
+Motor de UI adaptado (buscador, notas, resaltador, modo oscuro, offline) con contenido
+y diseño propios; el armazón vive en `template.html` y el repo es **autocontenido**.
 
 > **En vivo:** `https://TU-USUARIO.github.io/programacion-concurrente/`
 > (reemplazá `TU-USUARIO` cuando lo publiques — ver [Publicar](#publicar-en-github-pages)).
@@ -109,7 +109,8 @@ programacion-concurrente/
 │   └── repaso-final.html                 (repaso compacto para el final)
 ├── toc.html                # Índice del apunte           ← FUENTE
 ├── toc-repaso.html         # Índice del repaso final      ← FUENTE
-├── build.py                # Ensambla index.html y repaso-final.html (mismo shell) desde content/ + tocs
+├── template.html           # Armazón (shell CSS/JS) con 5 placeholders ← FUENTE
+├── build.py                # Rellena template.html con content/ + tocs (autocontenido)
 │
 ├── sw.js                   # Service worker (offline)
 ├── manifest.webmanifest    # Manifiesto PWA
@@ -233,21 +234,22 @@ flowchart LR
 
 ### Qué hace `build.py`
 
-Es un ensamblador en Python (sin dependencias). En cada corrida:
+Es un ensamblador en Python (sin dependencias) y **autocontenido**: el armazón vive en
+`template.html` (CSS y JS del buscador, notas, resaltador, modo oscuro y service worker,
+con la marca, la paleta, los estilos y los scripts ya horneados). `template.html` expone
+cinco puntos de inyección — `<!--PAGE-TITLE-->`, `<!--DESCRIPTION-->`, `<!--TOC-->`,
+`<!--NAV-LINK-->` y `<!--CONTENT-->` — y `build.py` solo los rellena (con `str.replace`,
+sin regex ni marcadores heredados). En cada corrida:
 
-1. Toma el **shell probado** de `../aprendizaje-automatico/index.html` (todo su CSS y JS:
-   buscador, notas, resaltador, modo oscuro, service worker).
-2. Le **reemplaza** la paleta de colores, la marca, el índice (`toc.html`) y el contenido
-   (concatena `content/part-*.html` en orden).
-3. **Escapa** los bloques `<pre data-code>` e **inyecta** Mermaid.
-4. Arma **dos páginas con el mismo shell**: `index.html` (apunte, índice `toc.html`, enlace →
+1. Escapa los bloques `<pre data-code>` (a `<`/`>`/`&`) y concatena `content/part-*.html`.
+2. Arma **dos páginas con el mismo shell**: `index.html` (apunte, índice `toc.html`, enlace →
    «Repaso final») y `repaso-final.html` (repaso compacto, índice propio `toc-repaso.html` con
    anclas in-page para que el buscador y la navegación funcionen dentro del repaso, enlace →
    «Apunte»). Cada sección del repaso es un `.chapter` con `id` y `data-title` (igual que el
    apunte), así el buscador la indexa. Genera también `repaso-final.md` (mirror Markdown).
 
-> Para *rebuildear* necesitás la carpeta hermana `aprendizaje-automatico` (es la plantilla).
-> El `index.html` ya generado **no** la necesita: es autocontenido y se publica solo.
+> El build **no depende de ningún repo externo**: `template.html` es la plantilla y vive acá.
+> Si querés tocar el armazón (estilos, scripts, paleta, marca), se edita `template.html`.
 
 ## Créditos
 
