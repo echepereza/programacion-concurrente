@@ -3351,21 +3351,87 @@ flowchart LR
         </details>
         <details>
           <summary>[Modelado Petri] Técnicos con diagnósticos y parche del ingeniero</summary>
-          <p>Hasta <strong>3 técnicos</strong> diagnostican concurrentemente sobre la BD; tras <strong>3 diagnósticos</strong> un ingeniero aplica un parche antes de permitir nuevos; el parche solo puede correr si <em>nadie</em> está diagnosticando (exclusión mutua entre técnicos e ingeniero).</p>
-          <ul class="study-list">
-            <li><strong>Lugares:</strong> <code>cupos_BD</code> (marca inicial 3: técnicos que pueden entrar a la vez), <code>diagnosticando</code> (técnicos activos, para el mutuamente-excluyente con el parche), <code>contador</code> (diagnósticos completados; a los 3 habilita el parche), <code>listo_parche</code>/<code>parcheando</code>.</li>
-            <li><strong>Transiciones atómicas:</strong> <code>iniciar_diagnóstico</code> (consume 1 de <code>cupos_BD</code>), <code>finalizar_diagnóstico</code> (repone cupo y suma 1 al <code>contador</code>), <code>aplicar_parche</code> (habilitada cuando <code>contador = 3</code> y no hay técnicos diagnosticando; usa un <strong>arco inhibidor</strong> desde <code>diagnosticando</code> para bloquearse si hay alguien activo, y resetea el contador).</li>
-          </ul>
-          <p>La exclusión ingeniero↔técnicos se garantiza con el arco inhibidor (o un lugar «BD_libre» que el parche toma en exclusiva). Se pide además el <a href="#petri">grafo de alcance</a> de una ejecución posible.</p>
+          <p><strong>Consigna:</strong> hasta <strong>3 técnicos</strong> diagnostican concurrentemente sobre una BD. Cada <strong>3 diagnósticos</strong>, un ingeniero aplica un <em>parche</em>; el parche solo corre si <strong>nadie</strong> está diagnosticando y, mientras se aplica, no pueden iniciarse nuevos diagnósticos. Modelar con red de Petri (arcos inhibidores), dar la marca inicial y una secuencia de disparos.</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Lugar</th><th>Significado</th><th>M0</th></tr></thead>
+            <tbody>
+              <tr><td><code>P1</code></td><td>técnicos esperando</td><td>3</td></tr>
+              <tr><td><code>P2</code></td><td>técnicos diagnosticando</td><td>0</td></tr>
+              <tr><td><code>P3</code></td><td>diagnósticos acumulados (contador)</td><td>0</td></tr>
+              <tr><td><code>P4</code></td><td>ingeniero esperando</td><td>1</td></tr>
+              <tr><td><code>P5</code></td><td>ingeniero aplicando el parche</td><td>0</td></tr>
+            </tbody>
+          </table></div>
+          <p><strong>Marca inicial:</strong> <code>M0 = (3, 0, 0, 1, 0)</code>. Transiciones con sus funciones de entrada/salida:</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th><code>I(t)</code></th><th>Transición</th><th><code>O(t)</code></th><th>Interpretación</th></tr></thead>
+            <tbody>
+              <tr><td><code>P1</code> + inhibidor(<code>P5</code>)</td><td><code>t1</code>: inicia diagnóstico</td><td><code>P2</code></td><td>hay técnico libre y <em>no</em> hay parche en curso</td></tr>
+              <tr><td><code>P2</code></td><td><code>t2</code>: termina diagnóstico</td><td><code>P1</code> + <code>P3</code></td><td>libera al técnico y suma 1 al contador</td></tr>
+              <tr><td><code>P4</code> + 3·<code>P3</code> + inhibidor(<code>P2</code>)</td><td><code>t3</code>: aplica parche</td><td><code>P5</code></td><td>hay ingeniero, ya hay 3 diagnósticos (arco de <strong>peso 3</strong>) y <em>nadie</em> diagnosticando</td></tr>
+              <tr><td><code>P5</code></td><td><code>t4</code>: termina parche</td><td><code>P4</code></td><td>libera al ingeniero (el contador ya quedó en 0)</td></tr>
+            </tbody>
+          </table></div>
+          <figure class="diagram">
+            <div class="mermaid">
+flowchart LR
+    P1(("P1 · esperando · 3")) --> t1["t1 · inicia dx"]
+    t1 --> P2(("P2 · diagnosticando"))
+    P2 --> t2["t2 · termina dx"]
+    t2 --> P1
+    t2 --> P3(("P3 · contador dx"))
+    P4(("P4 · ing esperando · 1")) --> t3["t3 · aplica parche"]
+    P3 -->|peso 3| t3
+    t3 --> P5(("P5 · parcheando"))
+    P5 --> t4["t4 · termina parche"]
+    t4 --> P4
+    P2 -.->|inhibe| t3
+    P5 -.->|inhibe| t1
+            </div>
+            <figcaption>Los arcos punteados son <strong>inhibidores</strong> (habilitan la transición solo si el lugar está vacío): <code>P2⊸t3</code> = el parche espera a que no quede nadie diagnosticando; <code>P5⊸t1</code> = mientras se parchea no entran nuevos diagnósticos. El arco <code>P3→t3</code> tiene peso 3 (batch de 3).</figcaption>
+          </figure>
+          <p><strong>Grafo de alcance (una ejecución válida):</strong> <code>(3,0,0,1,0)</code> —t1→ <code>(2,1,0,1,0)</code> —t1→ <code>(1,2,0,1,0)</code> —t2→ <code>(2,1,1,1,0)</code> —t1→ <code>(1,2,1,1,0)</code> —t2→ <code>(2,1,2,1,0)</code> —t2→ <code>(3,0,3,1,0)</code> —t3→ <code>(3,0,0,0,1)</code> —t4→ <code>(3,0,0,1,0)</code>. <strong>Invariantes:</strong> <code>P1+P2 = 3</code> (los técnicos) y <code>P4+P5 = 1</code> (el único ingeniero) se conservan siempre — sirven para justificar que la red es <em>acotada</em>.</p>
+          <div class="callout warning"><strong>Matiz (para no perder puntos):</strong> como <code>t1</code> se inhibe con el parche pero <em>no</em> con «ya hay 3», si los técnicos no se detienen el contador <code>P3</code> puede superar 3 y el ingeniero podría demorar (necesita <code>P2=0</code>). Es fiel a «el parche corre solo si nadie diagnostica». Para <em>bloquear</em> el inicio del 4.º diagnóstico hasta parchear, se agrega un lugar <code>permisos</code> (=3) que <code>t1</code> consume y <code>t3</code> recarga — la misma técnica que usa la estación de carga de acá abajo.</div>
         </details>
         <details>
           <summary>[Modelado Petri] Estación de carga de vehículos eléctricos</summary>
-          <p>Hasta <strong>2 autos</strong> cargan a la vez; tras <strong>4 cargas</strong> completas se exige mantenimiento; el mantenimiento solo corre si <em>nadie</em> está cargando; acciones atómicas.</p>
-          <ul class="study-list">
-            <li><strong>Lugares:</strong> <code>cargadores_libres</code> (marca inicial 2), <code>cargando</code> (autos activos), <code>cargas_hechas</code> (cuenta hasta 4), <code>mantenimiento_pendiente</code>.</li>
-            <li><strong>Transiciones:</strong> <code>iniciar_carga</code> (consume un cargador libre), <code>finalizar_carga</code> (repone cargador y suma 1 a <code>cargas_hechas</code>), <code>realizar_mantenimiento</code> (habilitada con <code>cargas_hechas = 4</code> y con un <strong>arco inhibidor</strong> desde <code>cargando</code> que la bloquea si hay algún auto cargando; al dispararse resetea el contador).</li>
-          </ul>
-          <p>El arco inhibidor desde <code>cargando</code> hacia <code>realizar_mantenimiento</code> es lo que <strong>garantiza que el mantenimiento solo se hace con la estación vacía</strong>. Se pide el grafo de alcance de una ejecución. Ver <a href="#petri">§14</a>.</p>
+          <p><strong>Consigna:</strong> hasta <strong>2 autos</strong> cargan a la vez; tras <strong>4 cargas</strong> completas la estación exige <em>mantenimiento</em> y no permite nuevas cargas hasta hacerlo; el mantenimiento solo corre si <strong>ningún</strong> auto está cargando. Modelar (arcos inhibidores), marca inicial y secuencia de disparos.</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Lugar</th><th>Significado</th><th>M0</th></tr></thead>
+            <tbody>
+              <tr><td><code>P1</code></td><td>autos esperando</td><td>4</td></tr>
+              <tr><td><code>P2</code></td><td>cargadores libres (cupo simultáneo)</td><td>2</td></tr>
+              <tr><td><code>P3</code></td><td>cargas completadas (contador)</td><td>0</td></tr>
+              <tr><td><code>P4</code></td><td>permisos de carga antes del próximo mantenimiento</td><td>4</td></tr>
+              <tr><td><code>P5</code></td><td>autos cargando</td><td>0</td></tr>
+            </tbody>
+          </table></div>
+          <p><strong>Marca inicial:</strong> <code>M0 = (4, 2, 0, 4, 0)</code>. Transiciones:</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th><code>I(t)</code></th><th>Transición</th><th><code>O(t)</code></th><th>Interpretación</th></tr></thead>
+            <tbody>
+              <tr><td><code>P1</code> + <code>P2</code> + <code>P4</code></td><td><code>t1</code>: inicia carga</td><td><code>P5</code></td><td>hay auto, hay cargador libre y queda un <em>permiso</em> antes del mantenimiento</td></tr>
+              <tr><td><code>P5</code></td><td><code>t2</code>: termina carga</td><td><code>P2</code> + <code>P3</code></td><td>libera el cargador y suma 1 al contador</td></tr>
+              <tr><td>4·<code>P3</code> + inhibidor(<code>P5</code>)</td><td><code>t3</code>: mantenimiento</td><td>4·<code>P4</code></td><td>hubo 4 cargas (<strong>peso 4</strong>) y <em>nadie</em> cargando; recarga los 4 permisos (arco de peso 4) y resetea el contador</td></tr>
+            </tbody>
+          </table></div>
+          <figure class="diagram">
+            <div class="mermaid">
+flowchart LR
+    P1(("P1 · esperando · 4")) --> t1["t1 · inicia carga"]
+    P2(("P2 · cargadores · 2")) --> t1
+    P4(("P4 · permisos · 4")) --> t1
+    t1 --> P5(("P5 · cargando"))
+    P5 --> t2["t2 · termina carga"]
+    t2 --> P2
+    t2 --> P3(("P3 · contador cargas"))
+    P3 -->|peso 4| t3["t3 · mantenimiento"]
+    t3 -->|peso 4| P4
+    P5 -.->|inhibe| t3
+            </div>
+            <figcaption>Dos mecanismos combinados: <code>P2</code> (=2) limita a <strong>2 cargas simultáneas</strong>; <code>P4</code> (=4 permisos) hace que <strong>tras 4 cargas iniciadas no entre ninguna más</strong> hasta que el mantenimiento (<code>t3</code>) recargue los permisos. El inhibidor <code>P5⊸t3</code> obliga a que el mantenimiento ocurra con la estación <strong>vacía</strong>.</figcaption>
+          </figure>
+          <p><strong>Grafo de alcance (esquemático):</strong> desde <code>(4,2,0,4,0)</code>, cuatro ciclos <code>t1</code>/<code>t2</code> llevan el contador <code>P3</code> a 4 y agotan los permisos <code>P4</code> a 0; con <code>P5=0</code> (nadie cargando) se dispara <code>t3</code>, que deja <code>P3=0</code> y <code>P4=4</code> y rehabilita las cargas. Como los permisos se agotan a las 4 cargas <em>iniciadas</em>, el contador nunca supera 4: <strong>no hay sobre-acumulación</strong> (a diferencia del modelo de los técnicos de arriba).</p>
         </details>
 
         <h3>Ej 3 — Redes y sockets</h3>
