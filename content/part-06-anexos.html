@@ -335,37 +335,42 @@ flowchart LR
         </details>
         <details>
           <summary>[Parcial] Programación asincrónica — Verdadero/Falso</summary>
-          <ul class="study-list">
-            <li>«El que hace poll es el thread principal» → <strong>F</strong> (lo hace el executor/runtime).</li>
-            <li>«poll se llama solo cuando la tarea puede progresar» → <strong>V</strong>.</li>
-            <li>«El modelo piñata es colaborativo» → <strong>V</strong> (cooperativo).</li>
-            <li>«La operación async inicia al llamar a la función <code>async</code>» → <strong>F</strong> (solo se crea el Future; arranca al primer poll/await).</li>
-            <li>«Procesos, hilos y tareas async tienen memoria independiente» → <strong>F</strong> (hilos y tareas comparten la del proceso).</li>
-            <li>«El scheduler del SO puede pausar una tarea async puntual» → <strong>F</strong> (las async son cooperativas, las maneja el executor).</li>
-            <li>«Threads y tareas async tienen stack propio» → <strong>parcial</strong>: el thread sí; la tarea async guarda su estado en el Future, no en un stack del SO dedicado.</li>
-            <li>«Con una sola CPU, hilos CPU-intensivos tardan mucho menos que tareas async con el mismo cómputo» → <strong>F</strong>: con cómputo puro no hay ventaja async; incluso los hilos pagan cambios de contexto.</li>
-            <li>«Un hilo esperando sobre una condvar solo puede despertarse cuando otro hace <code>signal</code> de la misma» → <strong>F</strong>: existen los <em>spurious wakeups</em> (puede despertar sin signal) → por eso el <code>wait</code> va en un <code>while</code>.</li>
-            <li>«El modelo de pasaje de mensajes elimina la posibilidad de deadlocks» → <strong>F</strong>: elimina los <em>data races</em> por memoria compartida, pero sigue habiendo deadlock por dependencias cruzadas (A espera a B y B a A). Lo mitigan soluciones como Chandy-Misra.</li>
-            <li>«Al usar tareas async, el executor de Rust asegura que cada tarea será eventualmente ejecutada» → <strong>F</strong>: es <em>cooperativo</em>; una tarea que nunca llega a un <code>await</code> (cómputo CPU-bound) acapara el hilo y mata a las demás. No hay garantía de fairness como en el scheduler del SO.</li>
-            <li>«Las tareas async son más livianas porque comprimen su stack» → <strong>F</strong>: no «comprimen» un stack; guardan <em>solo</em> el estado necesario para retomar dentro del <code>Future</code> (no tienen un stack del SO que crezca como el thread).</li>
-            <li>«Para acceder al estado interno de un actor desde otros actores hace falta exclusión mutua para evitar race conditions» → <strong>F</strong>: los actores <em>no</em> comparten estado; se accede <strong>solo por mensajes</strong> (uno a la vez en la mailbox) → sin locks y sin races por diseño.</li>
-          </ul>
+          <div class="vf-quiz">
+            <p class="vf-hint">Respondé mentalmente <strong>V</strong> o <strong>F</strong> y tocá cada afirmación para revelar la respuesta.</p>
+            <details class="vf"><summary>«El que hace poll es el thread principal»</summary><p class="vf-a"><strong>F.</strong> Lo hace el executor/runtime.</p></details>
+            <details class="vf"><summary>«poll se llama solo cuando la tarea puede progresar»</summary><p class="vf-a"><strong>V.</strong></p></details>
+            <details class="vf"><summary>«El modelo piñata es colaborativo»</summary><p class="vf-a"><strong>V</strong> (cooperativo).</p></details>
+            <details class="vf"><summary>«La operación async inicia al llamar a la función <code>async</code>»</summary><p class="vf-a"><strong>F.</strong> Solo se crea el Future; arranca al primer poll/await.</p></details>
+            <details class="vf"><summary>«Procesos, hilos y tareas async tienen memoria independiente»</summary><p class="vf-a"><strong>F.</strong> Hilos y tareas comparten la del proceso.</p></details>
+            <details class="vf"><summary>«El scheduler del SO puede pausar una tarea async puntual»</summary><p class="vf-a"><strong>F.</strong> Las async son cooperativas, las maneja el executor.</p></details>
+            <details class="vf"><summary>«Threads y tareas async tienen stack propio»</summary><p class="vf-a"><strong>Parcial:</strong> el thread sí; la tarea async guarda su estado en el Future, no en un stack del SO dedicado.</p></details>
+            <details class="vf"><summary>«Con una sola CPU, hilos CPU-intensivos tardan mucho menos que tareas async con el mismo cómputo»</summary><p class="vf-a"><strong>F.</strong> Con cómputo puro no hay ventaja async; incluso los hilos pagan cambios de contexto.</p></details>
+            <details class="vf"><summary>«Un hilo esperando sobre una condvar solo puede despertarse cuando otro hace <code>signal</code> de la misma»</summary><p class="vf-a"><strong>F.</strong> Existen los <em>spurious wakeups</em> (puede despertar sin signal) → por eso el <code>wait</code> va en un <code>while</code>.</p></details>
+            <details class="vf"><summary>«El modelo de pasaje de mensajes elimina la posibilidad de deadlocks»</summary><p class="vf-a"><strong>F.</strong> Elimina los <em>data races</em> por memoria compartida, pero sigue habiendo deadlock por dependencias cruzadas (A espera a B y B a A). Lo mitigan soluciones como Chandy-Misra.</p></details>
+            <details class="vf"><summary>«Al usar tareas async, el executor de Rust asegura que cada tarea será eventualmente ejecutada»</summary><p class="vf-a"><strong>F.</strong> Es <em>cooperativo</em>; una tarea que nunca llega a un <code>await</code> (cómputo CPU-bound) acapara el hilo y mata a las demás. No hay garantía de fairness como en el scheduler del SO.</p></details>
+            <details class="vf"><summary>«Las tareas async son más livianas porque comprimen su stack»</summary><p class="vf-a"><strong>F.</strong> No «comprimen» un stack; guardan <em>solo</em> el estado necesario para retomar dentro del <code>Future</code> (no tienen un stack del SO que crezca como el thread).</p></details>
+            <details class="vf"><summary>«Para acceder al estado interno de un actor desde otros actores hace falta exclusión mutua para evitar race conditions»</summary><p class="vf-a"><strong>F.</strong> Los actores <em>no</em> comparten estado; se accede <strong>solo por mensajes</strong> (uno a la vez en la mailbox) → sin locks y sin races por diseño.</p></details>
+          </div>
         </details>
         <details>
           <summary>[Parcial] Elegir el modelo de concurrencia por caso</summary>
-          <p>Base en la tabla de <a href="#modelos">§4</a> (matrices→SIMD/GPU; varias APIs→async; log muy visitado→async o RwLock; backend de juego→actores; .DOC→.PDF→fork-join; Menti/Kahoot→actores; caché→RwLock; API NLP→async + <code>spawn_blocking</code>). Casos de los parciales 06/05 y 10/06 2026:</p>
-          <div class="table-wrap"><table>
-            <thead><tr><th>Caso</th><th>Modelo · por qué</th></tr></thead>
-            <tbody>
-              <tr><td>Encriptar un conjunto de archivos, cada uno por separado</td><td><strong>Fork-join</strong> / pool: CPU-bound e independiente (unidad de trabajo por archivo).</td></tr>
-              <tr><td>App que convierte texto a voz <em>localmente</em> en el teléfono</td><td>Cómputo local por pedido → un <strong>thread</strong>/fork-join (o <code>spawn_blocking</code> si hay una UI async que no debe bloquearse). No es I/O.</td></tr>
-              <tr><td>Hosting de archivos estáticos (tipo Amazon S3)</td><td><strong>Async</strong>: I/O-bound, muchísimas conexiones que sobre todo esperan disco/red.</td></tr>
-              <tr><td>Dashboard de automatización del hogar (estados en vivo)</td><td><strong>Actores</strong> / pub-sub + <strong>async</strong>: streaming de eventos en vivo desde muchos sensores hacia muchos clientes.</td></tr>
-              <tr><td>Renderizado 3D en un motor de videojuegos</td><td><strong>Fork-join + GPU</strong>: CPU/GPU-bound, masivo y en tiempo real (no async).</td></tr>
-              <tr><td>Sistema de votación electrónica (elegir autoridades)</td><td><strong>Estado compartido con atómicos</strong> o un <strong>actor contador</strong>: agregación concurrente con mucha escritura (no SIMD).</td></tr>
-              <tr><td>Broker de mensajería MQTT con miles de conexiones IoT</td><td><strong>Async</strong> (I/O-bound masivo) + <strong>actores</strong> por topic/cliente: el clásico caso de decenas de miles de conexiones que esperan.</td></tr>
-            </tbody>
-          </table></div>
+          <div class="vf-quiz">
+            <p class="vf-hint">Para cada caso, elegí el modelo (y por qué) y tocá para verificar. Base: la tabla de <a href="#modelos">§4</a>. Casos de los parciales 06/05 y 10/06 2026 y de clase.</p>
+            <details class="vf pick"><summary>Encriptar un conjunto de archivos, cada uno por separado</summary><p class="vf-a"><strong>Fork-join</strong> / pool: CPU-bound e independiente (una unidad de trabajo por archivo).</p></details>
+            <details class="vf pick"><summary>App que convierte texto a voz <em>localmente</em> en el teléfono</summary><p class="vf-a">Cómputo local por pedido → un <strong>thread</strong>/fork-join (o <code>spawn_blocking</code> si hay una UI async que no debe bloquearse). No es I/O.</p></details>
+            <details class="vf pick"><summary>Hosting de archivos estáticos (tipo Amazon S3)</summary><p class="vf-a"><strong>Async</strong>: I/O-bound, muchísimas conexiones que sobre todo esperan disco/red.</p></details>
+            <details class="vf pick"><summary>Dashboard de automatización del hogar (estados en vivo)</summary><p class="vf-a"><strong>Actores</strong> / pub-sub + <strong>async</strong>: streaming de eventos en vivo desde muchos sensores hacia muchos clientes.</p></details>
+            <details class="vf pick"><summary>Renderizado 3D en un motor de videojuegos</summary><p class="vf-a"><strong>Fork-join + GPU</strong>: CPU/GPU-bound, masivo y en tiempo real (no async).</p></details>
+            <details class="vf pick"><summary>Sistema de votación electrónica (elegir autoridades)</summary><p class="vf-a"><strong>Estado compartido con atómicos</strong> o un <strong>actor contador</strong>: agregación concurrente con mucha escritura (no SIMD).</p></details>
+            <details class="vf pick"><summary>Broker de mensajería MQTT con miles de conexiones IoT</summary><p class="vf-a"><strong>Async</strong> (I/O-bound masivo) + <strong>actores</strong> por topic/cliente: el clásico caso de decenas de miles de conexiones que esperan.</p></details>
+            <details class="vf pick"><summary>Multiplicar matrices grandes / procesar imágenes píxel a píxel</summary><p class="vf-a"><strong>SIMD / GPU</strong>: misma operación sobre muchísimos datos (data-parallel).</p></details>
+            <details class="vf pick"><summary>Servicio que consulta varias APIs externas a la vez</summary><p class="vf-a"><strong>Async</strong>: I/O-bound, mayormente espera de red.</p></details>
+            <details class="vf pick"><summary>Un log/registro muy visitado (mucha lectura, poca escritura)</summary><p class="vf-a"><strong>Async</strong> para servirlo, y <strong>RwLock</strong> si hay estado compartido (N lectores o 1 escritor).</p></details>
+            <details class="vf pick"><summary>Convertir un <code>.DOC</code> a <code>.PDF</code></summary><p class="vf-a"><strong>Fork-join</strong>: cómputo CPU-bound que se puede dividir en partes.</p></details>
+            <details class="vf pick"><summary>App tipo Menti/Kahoot (respuestas en vivo de muchos usuarios)</summary><p class="vf-a"><strong>Actores</strong>: estado por sala/pregunta, agregación concurrente sin locks.</p></details>
+            <details class="vf pick"><summary>Caché en memoria compartida entre muchos hilos</summary><p class="vf-a"><strong>RwLock</strong>: muchas lecturas concurrentes, escrituras exclusivas.</p></details>
+            <details class="vf pick"><summary>API que llama a un modelo de NLP (cómputo pesado por request)</summary><p class="vf-a"><strong>Async</strong> para las conexiones + <code>spawn_blocking</code> para el cómputo pesado (no bloquear el executor).</p></details>
+          </div>
         </details>
         <details>
           <summary>[Parcial] Modelar en Petri: productor-consumidor y lector-escritor</summary>
