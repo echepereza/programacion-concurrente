@@ -748,10 +748,17 @@
     details.vf > summary { padding: 10px 14px; font-weight: 500; gap: 12px; color: var(--ink); line-height: 1.5; }
     details.vf > summary:after { content: "V / F"; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .05em; border: 1px solid var(--accent); border-radius: 999px; padding: 2px 9px; flex: none; }
     details.vf.pick > summary:after { content: "modelo?"; }
+    details.vf.sol > summary { font-weight: 600; }
+    details.vf.sol > summary:after { content: "ver"; }
+    details.vf.sol[open] > summary:after { content: "ocultar"; color: var(--muted); border-color: var(--line); }
+    details.vf.sol { margin: 10px 0 4px; }
     details.vf[open] > summary { font-weight: 600; }
     details.vf[open] > summary:after { content: "respuesta"; color: var(--muted); border-color: var(--line); }
     details.vf .vf-a { margin: 0; padding: 8px 14px 12px; color: var(--muted); line-height: 1.55; }
     details.vf .vf-a strong { color: var(--accent-ink); }
+    details.vf div.vf-a > :first-child { margin-top: 0; }
+    details.vf div.vf-a > :last-child { margin-bottom: 0; }
+    details.vf div.vf-a pre.code { margin: 10px 0; }
 
     .exam-answer {
       position: relative;

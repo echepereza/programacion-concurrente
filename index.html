@@ -748,10 +748,17 @@
     details.vf > summary { padding: 10px 14px; font-weight: 500; gap: 12px; color: var(--ink); line-height: 1.5; }
     details.vf > summary:after { content: "V / F"; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .05em; border: 1px solid var(--accent); border-radius: 999px; padding: 2px 9px; flex: none; }
     details.vf.pick > summary:after { content: "modelo?"; }
+    details.vf.sol > summary { font-weight: 600; }
+    details.vf.sol > summary:after { content: "ver"; }
+    details.vf.sol[open] > summary:after { content: "ocultar"; color: var(--muted); border-color: var(--line); }
+    details.vf.sol { margin: 10px 0 4px; }
     details.vf[open] > summary { font-weight: 600; }
     details.vf[open] > summary:after { content: "respuesta"; color: var(--muted); border-color: var(--line); }
     details.vf .vf-a { margin: 0; padding: 8px 14px 12px; color: var(--muted); line-height: 1.55; }
     details.vf .vf-a strong { color: var(--accent-ink); }
+    details.vf div.vf-a > :first-child { margin-top: 0; }
+    details.vf div.vf-a > :last-child { margin-bottom: 0; }
+    details.vf div.vf-a pre.code { margin: 10px 0; }
 
     .exam-answer {
       position: relative;
@@ -3116,7 +3123,7 @@ impl Handler&lt;Reservar&gt; for Producto {
         thread::sleep(Duration::from_millis((5000.0 * rng.gen::&lt;f64&gt;()) as u64));
     });
 }</code></pre>
-          <p>→ <strong>NO es busy-wait.</strong> Cada vuelta produce (mina y escribe) sin esperar ninguna condición; el <code>sleep</code> es solo pacing.</p>
+          <details class="vf sol"><summary>¿Es busy-wait?</summary><p class="vf-a"><strong>NO.</strong> Cada vuelta produce (mina y escribe) sin esperar ninguna condición; el <code>sleep</code> es solo pacing.</p></details>
 
           <p><strong>1C 2024 · Fragmento B</strong> — produce una batería al juntar 100 de lithium:</p>
           <pre class="code" data-lang="rust"><code>for _ in 0..MINERS {
@@ -3131,7 +3138,7 @@ impl Handler&lt;Reservar&gt; for Producto {
         thread::sleep(Duration::from_millis(500));
     });
 }</code></pre>
-          <p>→ <strong>SÍ, espera activa «tibia».</strong> Cuando <code>lithium &lt; 100</code> no hace nada: <em>poll-ea</em> la condición «¿ya hay 100?» con un <code>sleep</code>. El sleep baja el CPU pero no lo vuelve espera pasiva. Correcto: una <code>Condvar</code> que despierte al hilo justo cuando el lithium llega a 100.</p>
+          <details class="vf sol"><summary>¿Es busy-wait?</summary><p class="vf-a"><strong>SÍ, espera activa «tibia».</strong> Cuando <code>lithium &lt; 100</code> no hace nada: <em>poll-ea</em> la condición «¿ya hay 100?» con un <code>sleep</code>. El sleep baja el CPU pero no lo vuelve espera pasiva. Correcto: una <code>Condvar</code> que despierte al hilo justo cuando el lithium llega a 100.</p></details>
 
           <p><strong>2C 2024 · Fragmento A</strong> — reintento de conexión:</p>
           <pre class="code" data-lang="rust"><code>loop {
@@ -3140,7 +3147,7 @@ impl Handler&lt;Reservar&gt; for Producto {
         Err(_) =&gt; { thread::sleep(Duration::from_millis((5000.0 * rng.gen::&lt;f64&gt;()) as u64)); }
     }
 }</code></pre>
-          <p>→ <strong>NO es busy-wait.</strong> Reintenta una operación <em>externa</em> (un server que puede estar caído) con backoff; no hay forma de «bloquearse hasta que el server levante».</p>
+          <details class="vf sol"><summary>¿Es busy-wait?</summary><p class="vf-a"><strong>NO.</strong> Reintenta una operación <em>externa</em> (un server que puede estar caído) con backoff; no hay forma de «bloquearse hasta que el server levante».</p></details>
 
           <p><strong>2C 2024 · Fragmento B</strong> — procesa ACKs vencidos periódicamente:</p>
           <pre class="code" data-lang="rust"><code>loop {
@@ -3159,15 +3166,15 @@ impl Handler&lt;Reservar&gt; for Producto {
         } else { i += 1; }
     }
 }</code></pre>
-          <p>→ <strong>NO es busy-wait</strong> (tarea periódica): cada pasada <em>procesa</em> los ítems vencidos; no se queda mirando una condición sin hacer nada.</p>
+          <details class="vf sol"><summary>¿Es busy-wait?</summary><p class="vf-a"><strong>NO</strong> (tarea periódica): cada pasada <em>procesa</em> los ítems vencidos; no se queda mirando una condición sin hacer nada.</p></details>
 
           <p>Contraejemplo mínimo de busy-wait «caliente»: <code>loop { if *flag.lock().unwrap() { break; } }</code> — spin sin sleep ni trabajo, 100% CPU.</p>
           <p>Ver la regla completa en <a href="#correccion">§10</a>.</p>
         </details>
         <details>
           <summary>[Parcial] Identificar la estructura y sus errores (Mutex + Condvar)</summary>
-          <p>Un <code>struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }</code> con <code>function_1</code> (si <code>amount &lt;= 0</code> hace <code>wait</code>, luego <code>-= 1</code>) y <code>function_2</code> (<code>+= 1</code> y <code>notify_all</code>) es un <strong>semáforo contador</strong> (implementado como monitor).</p>
-          <p><strong>Error:</strong> usa <code>if *amount &lt;= 0 { wait }</code> en vez de <code>while</code>. Ante un <strong>spurious wakeup</strong> o varios waiters despertados por <code>notify_all</code>, un proceso puede seguir con <code>amount == 0</code> y decrementar a negativo. <strong>Solución:</strong> cambiar el <code>if</code> por <code>while</code>. (Ver <a href="#semaforos">§12</a>.)</p>
+          <p><strong>Consigna:</strong> dado un <code>struct { mutex: Mutex&lt;i32&gt;, cond_var: Condvar }</code> con <code>function_1</code> (si <code>amount &lt;= 0</code> hace <code>wait</code>, luego <code>-= 1</code>) y <code>function_2</code> (<code>+= 1</code> y <code>notify_all</code>): ¿qué estructura de sincronización es y qué error tiene?</p>
+          <details class="vf sol"><summary>Resolución</summary><div class="vf-a"><p><strong>Qué es:</strong> un <strong>semáforo contador</strong> (implementado como monitor: mutex + variable de condición).</p><p><strong>Error:</strong> usa <code>if *amount &lt;= 0 { wait }</code> en vez de <code>while</code>. Ante un <strong>spurious wakeup</strong> o varios waiters despertados por <code>notify_all</code>, un proceso puede seguir con <code>amount == 0</code> y decrementar a negativo. <strong>Solución:</strong> cambiar el <code>if</code> por <code>while</code>. (Ver <a href="#semaforos">§12</a>.)</p></div></details>
         </details>
 
         <details>
@@ -3191,14 +3198,17 @@ loop {                                             // CONSUMIDOR
     else { thread::sleep(Duration::from_secs(1)); drop(buf); }
 }
 handle.join().unwrap();</code></pre>
-          <p><strong>(a) Problemas y solución:</strong></p>
-          <ul class="study-list">
-            <li><strong>Busy-wait (espera activa):</strong> ambos <em>poll-ean</em> con <code>sleep(1s)</code> en vez de bloquearse. Solución: una <code>Condvar</code> (o dos: <code>notEmpty</code>/<code>notFull</code>) que despierte al productor cuando hay hueco y al consumidor cuando hay ítem — o directamente un canal <code>mpsc</code>.</li>
-            <li><strong>Duerme reteniendo el lock:</strong> en el <code>else</code> el <code>sleep</code> ocurre <em>antes</em> del <code>drop</code>, así que el hilo tiene el <code>Mutex</code> tomado durante todo el segundo → el otro hilo no puede entrar y el sistema se serializa/estanca. El <code>drop</code> debería ir <em>antes</em> del sleep.</li>
-            <li><strong><code>handle.join()</code> inalcanzable:</strong> el loop del consumidor es infinito.</li>
-          </ul>
-          <p><strong>(b) ¿Por qué el <code>drop</code>?</strong> El <code>MutexGuard</code> mantiene el lock tomado hasta que se destruye (RAII). Si no lo soltás <em>antes</em> de bloquearte/dormir, el otro hilo no puede adquirir el <code>Mutex</code> y nadie progresa. (Y acá está mal ubicado: soltar <em>después</em> del sleep no sirve.)</p>
-          <p>La solución correcta se modela en Petri como el <a href="#petri">productor-consumidor con buffer acotado (§14, Ej 2)</a> — justo lo que pedía el Ej 4 del recuperatorio.</p>
+          <p><strong>Consigna:</strong> encontrar los problemas de concurrencia y explicar por qué es necesario el <code>drop</code>.</p>
+          <details class="vf sol"><summary>Resolución</summary><div class="vf-a">
+            <p><strong>(a) Problemas y solución:</strong></p>
+            <ul class="study-list">
+              <li><strong>Busy-wait (espera activa):</strong> ambos <em>poll-ean</em> con <code>sleep(1s)</code> en vez de bloquearse. Solución: una <code>Condvar</code> (o dos: <code>notEmpty</code>/<code>notFull</code>) que despierte al productor cuando hay hueco y al consumidor cuando hay ítem — o directamente un canal <code>mpsc</code>.</li>
+              <li><strong>Duerme reteniendo el lock:</strong> en el <code>else</code> el <code>sleep</code> ocurre <em>antes</em> del <code>drop</code>, así que el hilo tiene el <code>Mutex</code> tomado durante todo el segundo → el otro hilo no puede entrar y el sistema se serializa/estanca. El <code>drop</code> debería ir <em>antes</em> del sleep.</li>
+              <li><strong><code>handle.join()</code> inalcanzable:</strong> el loop del consumidor es infinito.</li>
+            </ul>
+            <p><strong>(b) ¿Por qué el <code>drop</code>?</strong> El <code>MutexGuard</code> mantiene el lock tomado hasta que se destruye (RAII). Si no lo soltás <em>antes</em> de bloquearte/dormir, el otro hilo no puede adquirir el <code>Mutex</code> y nadie progresa. (Y acá está mal ubicado: soltar <em>después</em> del sleep no sirve.)</p>
+            <p>La solución correcta se modela en Petri como el <a href="#petri">productor-consumidor con buffer acotado (§14, Ej 2)</a> — justo lo que pedía el Ej 4 del recuperatorio.</p>
+          </div></details>
         </details>
 
         <details>
