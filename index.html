@@ -3093,255 +3093,93 @@ impl Handler&lt;Reservar&gt; for Producto {
         <h3>Ej 1 — Sección crítica y corrección</h3>
         <details>
           <summary>Definir el problema de la sección crítica: programa modelo y especificaciones de corrección</summary>
-
-          <h4>Programa modelo</h4>
-          <p>El <strong>programa modelo</strong> es el esquema abstracto que describe lo que hace cada proceso en un sistema concurrente que comparte recursos. Se representa como un <strong>ciclo infinito</strong> cuyo código se divide en dos partes:</p>
-          <ul class="study-list">
-            <li><strong>Parte no-crítica:</strong> código que no accede a recursos compartidos.</li>
-            <li><strong>Parte crítica (sección crítica):</strong> bloque donde se accede a recursos compartidos.</li>
-          </ul>
-
-          <p>La sección crítica <strong>debe progresar y finalizar eventualmente</strong>; un proceso no debe quedarse adentro para siempre.</p>
-
-          <figure class="diagram"><div class="mermaid">
-        graph LR
-          A["Parte no-crítica"] --> B["Protocolo de entrada"]
-          B --> C["SECCIÓN CRÍTICA"]
-          C --> D["Protocolo de salida"]
-          D --> A
-          </div><figcaption>Ciclo infinito del programa modelo</figcaption></figure>
-
+          <p>El <strong>programa modelo</strong> es el esquema abstracto de lo que hace cada proceso en un sistema concurrente que comparte recursos: un <strong>ciclo infinito</strong> cuyo código se divide en <strong>parte no-crítica</strong> (no toca recursos compartidos) y <strong>parte crítica</strong> o <strong>sección crítica</strong> (accede a recursos compartidos), separadas por un protocolo de entrada y uno de salida. La sección crítica <strong>debe progresar y finalizar eventualmente</strong>: nadie se queda adentro para siempre.</p>
           <pre class="code" data-lang="rust"><code>loop {
-            // Parte no-crítica
             seccion_no_critica();
-
-            // Protocolo de entrada (sincronización)
-            protocolo_de_entrada();
-
-            // SECCIÓN CRÍTICA (acceso a recurso compartido)
-            SECCION_CRITICA();
-
-            // Protocolo de salida (liberación)
-            protocolo_de_salida();
+            protocolo_de_entrada();   // sincronización
+            SECCION_CRITICA();        // acceso al recurso compartido
+            protocolo_de_salida();    // liberación
         }</code></pre>
-
-          <h4>Especificaciones de corrección (3 propiedades exigibles)</h4>
-          <p>Una solución al problema de la sección crítica debe cumplir <strong>exactamente tres propiedades</strong>:</p>
-
+          <p><strong>Especificaciones de corrección</strong> — una solución correcta cumple estas tres:</p>
           <ol class="study-list">
-            <li><strong>Exclusión mutua (Safety):</strong> las instrucciones de la sección crítica no se intercalan. A lo sumo, un proceso se ejecuta dentro de la SC en cualquier momento. Formalmente: no hay dos procesos adentro de la SC simultáneamente.</li>
-
-            <li><strong>Ausencia de deadlock (Safety):</strong> el sistema nunca entra en un estado donde dos o más procesos se esperan mutuamente y ninguno puede progresar. Específicamente: si dos procesos intentan entrar a la sección crítica, al menos uno de ellos eventualmente lo logra. Más en general: un sistema que aún no finalizó debe poder continuar realizando su tarea productivamente (nunca se traba en espera circular).</li>
-
-            <li><strong>Ausencia de starvation (Liveness):</strong> si un proceso intenta entrar a la sección crítica, eventualmente debe lograrlo. No existe un proceso que espere indefinidamente mientras otros progresan; todos tienen oportunidad de usar el recurso.</li>
+            <li><strong>Exclusión mutua</strong> (safety): las instrucciones de la sección crítica <em>no se intercalan</em>. Si un proceso está adentro, ningún otro puede entrar.</li>
+            <li><strong>Ausencia de deadlock</strong> (safety, criterio de la cátedra): si dos procesos intentan entrar a la sección crítica, al menos uno lo logra. El sistema que todavía no terminó tiene que poder seguir avanzando productivamente.</li>
+            <li><strong>Ausencia de starvation</strong> (liveness): si un proceso intenta entrar, <em>eventualmente</em> lo consigue. Ninguno queda postergado para siempre.</li>
           </ol>
-
-          <div class="callout warning">
-            <strong>Matiz 1 — Clasificación de deadlock como Safety, no Liveness:</strong>
-            <p>La cátedra clasifica la «ausencia de deadlock» como propiedad de <strong>seguridad (Safety)</strong>, no de vivacidad. Esto difiere de la bibliografía general. La razón: un deadlock es un estado inválido en sí mismo. En el momento en que se forma el ciclo de espera mutua, ya ocurrió algo malo — es terminal, nunca se sale. No es una demora que «eventualmente» se resuelva, sino un error de estado que nunca debió alcanzarse. Por el contrario, <strong>starvation sí es liveness</strong>: el sistema sigue progresando (otros procesos avanzan), solo un proceso queda postergado indefinidamente.</p>
-          </div>
-
-          <div class="callout warning">
-            <strong>Matiz 2 — Por qué Fairness NO es especificación de corrección para la SC:</strong>
-            <p><strong>Fairness</strong> es una propiedad general sobre todas las instrucciones: si una instrucción está continuamente habilitada, eventualmente debe ejecutarse. Pero la SC no necesita fairness total; solo necesita la garantía más débil y puntual de que un proceso que quiere entrar, eventualmente entra — eso es exactamente <strong>ausencia de starvation</strong>. Pedir fairness además sería redundante y más fuerte de lo necesario. La especificación de corrección se cubre completamente con las tres propiedades listadas: no se requiere que toda instrucción del sistema sea justa, solo que no haya inanición de procesos en la SC.</p>
-          </div>
-
-          <h4>Relación con Safety y Liveness</h4>
-          <p>Las propiedades de corrección se clasifican en dos categorías fundamentales:</p>
-          <ul class="study-list">
-            <li><strong>Safety:</strong> «algo malo nunca pasa» (debe valer siempre). Incluye exclusión mutua y ausencia de deadlock.</li>
-            <li><strong>Liveness:</strong> «algo bueno eventualmente pasa» (debe volverse verdadero en algún momento). Incluye ausencia de starvation.</li>
-          </ul>
-
-          <p>La dificultad en programación concurrente surge porque la salida puede depender del <em>escenario de ejecución</em> (interleaving), no solo de la entrada. Por eso se necesitan estas propiedades formales: programas secuenciales son determinísticos, pero concurrentes pueden fallar 1 de cada 1000 corridas. Demostrar que las tres propiedades valen en todos los interleavings posibles es lo que garantiza que la solución es correcta.</p>
-
-          <p>Ver <a href="#correccion">§10</a>.</p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> el <strong>fairness no es</strong> una especificación de corrección de la sección crítica. Fairness es una propiedad más general y más fuerte, sobre <em>instrucciones</em>: si una instrucción está continuamente habilitada, eventualmente debe ejecutarse. A la sección crítica solo le importa la garantía puntual y más débil de que el proceso que quiere entrar entre — y eso ya lo da la ausencia de starvation. Pedir fairness además sería redundante. Ver <a href="#correccion">§10</a>.</div>
         </details>
         <details>
-        <summary>¿Cuál es la importancia de los criterios de corrección?</summary>
-
-        <p>En concurrencia se pierde la garantía fundamental de programación secuencial: <strong>misma entrada → misma salida</strong>. Esto ocurre porque la salida depende del <strong>escenario de ejecución</strong> — es decir, del <em>interleaving</em> que elige el scheduler entre los threads, que puede variar entre ejecuciones idénticas de entrada. A diferencia del código determinístico, donde debuggear basta para encontrar errores, aquí "anduvo bien en las pruebas" no prueba nada: el programa puede fallar 1 de cada 1000 corridas, sin reproducibilidad. Por eso no alcanza el testing empírico: necesitamos <strong>propiedades demostrables</strong> para diseñar y validar algoritmos de sincronización.</p>
-
-        <p>Se prueban dos clases de propiedades:</p>
-
-        <div class="table-wrap">
-        <table>
-        <thead><tr><th>Propiedad</th><th>Definición</th><th>Incluye</th></tr></thead>
-        <tbody>
-        <tr><td><strong>Safety (seguridad)</strong></td><td>«Algo malo <em>nunca</em> pasa». Debe ser verdadera <strong>siempre</strong>, en <em>todo</em> interleaving posible.</td><td>Exclusión mutua, Ausencia de deadlock</td></tr>
-        <tr><td><strong>Liveness (vivacidad)</strong></td><td>«Algo bueno <em>eventualmente</em> pasa». Debe volverse verdadera en algún momento, no necesariamente de inmediato.</td><td>Ausencia de starvation, Fairness</td></tr>
-        </tbody>
-        </table>
-        </div>
-
-        <h4>Componentes exactos (criterio de la cátedra):</h4>
-
-        <ul class="study-list">
-        <li><strong>Exclusión mutua (Safety):</strong> dos procesos no intercalan ciertas subsecuencias de instrucciones; a lo sumo uno accede a una variable compartida simultáneamente. Protege la integridad de datos.</li>
-        <li><strong>Ausencia de deadlock (Safety, según la cátedra):</strong> si dos o más procesos intentan entrar a una sección crítica, al menos uno logra hacerlo eventualmente; un sistema no finalizado siempre puede seguir productivamente. <em>Nota: aunque en bibliografía clásica se clasifica en liveness, la cátedra la ubica en safety</em>.</li>
-        <li><strong>Ausencia de starvation (Liveness):</strong> si un proceso está listo para usar un recurso o entrar a una sección crítica, eventualmente lo consigue; ningún proceso queda postergado para siempre mientras otros avanzan.</li>
-        <li><strong>Fairness (Liveness):</strong> si una instrucción está continuamente habilitada para ejecutarse, eventualmente aparece en el escenario; el scheduler no puede ignorar indefinidamente un hilo.</li>
-        </ul>
-
-        <div class="callout blue"><strong>Por qué se necesitan LAS DOS:</strong> la safety es necesaria pero no suficiente. Un sistema con perfect safety pero sin liveness es un deadlock: correcto pero paralizado. Recíprocamente, un sistema con perfect liveness pero sin safety progresa continuamente pero produce resultados incorrectos (race conditions corrompen datos). Ambas juntas garantizan un sistema que es <strong>seguro (no hay corrupción)</strong> y <strong>progresa (no se cuelga)</strong>.</div>
-
-        <div class="callout warning"><strong>Distinción fina:</strong> deadlock (safety) ≠ starvation (liveness). En deadlock <em>ningún</em> proceso avanza porque se esperan mutuamente por recursos. En starvation el sistema <em>sí</em> progresa pero un proceso particular queda relegado indefinidamente mientras otros continúan. Ambas son inaceptables pero por razones distintas.</div>
-
-        <p>Ver <a href="#correccion">§10</a>.</p>
-
+          <summary>¿Cuál es la importancia de los criterios de corrección?</summary>
+          <p>En concurrencia se pierde la garantía básica de la programación secuencial: <strong>misma entrada → misma salida</strong>. La salida depende del <strong>escenario de ejecución</strong>, o sea del <em>interleaving</em> que elige el scheduler, que puede cambiar entre corridas con la misma entrada. Por eso no alcanza con debuggear como en código determinístico: «anduvo bien en las pruebas» no prueba nada, porque el programa puede fallar 1 de cada 1000 veces y sin reproducirse. Los criterios de corrección dan <strong>propiedades demostrables</strong> para diseñar y validar algoritmos de sincronización, en lugar de depender del testing empírico.</p>
+          <p>Son de dos clases:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Clase</th><th>Cuándo debe valer</th><th>Propiedades</th></tr></thead>
+              <tbody>
+        <tr>
+          <td><strong>Safety</strong> (seguridad)</td>
+          <td>Verdadera <strong>siempre</strong>, en todo interleaving posible: «algo malo nunca pasa».</td>
+          <td><strong>Exclusión mutua</strong>: dos procesos no deben intercalar ciertas subsecuencias de instrucciones (ej.: el acceso a una variable global compartida).<br><strong>Ausencia de deadlock</strong>: un sistema que todavía no terminó debe poder seguir avanzando productivamente.</td>
+        </tr>
+        <tr>
+          <td><strong>Liveness</strong> (vivacidad)</td>
+          <td>Debe volverse verdadera <strong>eventualmente</strong>: «algo bueno en algún momento pasa».</td>
+          <td><strong>Ausencia de starvation</strong>: todo proceso listo para usar un recurso debe recibirlo eventualmente.<br><strong>Fairness</strong>: si una instrucción está continuamente habilitada, eventualmente entra en el escenario de ejecución.</td>
+        </tr>
+              </tbody>
+            </table>
+          </div>
+          <p><strong>Por qué hacen falta las dos:</strong> solo con safety se puede tener un sistema «seguro» pero que no le sirve a nadie, con procesos postergados para siempre; solo con liveness se puede tener un sistema que progresa todo el tiempo pero produce resultados incorrectos, porque las races le corrompen los datos.</p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> la cátedra ubica la <strong>ausencia de deadlock dentro de safety</strong>, a diferencia de buena parte de la bibliografía, que la trata como liveness. El razonamiento: el deadlock es un estado inválido en sí mismo, no algo que «tarda en pasar». Ver <a href="#correccion">§10</a>.</div>
         </details>
         <details>
           <summary>¿Qué es un deadlock y qué consecuencias tiene? ¿Y en distribuido?</summary>
-
-          <h4>Definición de deadlock</h4>
-          <p>Un <strong>deadlock</strong> (interbloqueo) es una situación en la que dos o más procesos se esperan mutuamente por recursos que cada uno tiene, generando una <strong>dependencia cíclica</strong>. Ninguno puede avanzar porque cada uno espera algo que el otro posee y nunca liberará.</p>
-
-          <h4>Ejemplo concreto</h4>
-          <p>Sean dos procesos P1 y P2 que necesitan dos locks, A y B:</p>
-          <ul class="study-list">
-            <li><strong>P1:</strong> adquiere lock A, luego intenta adquirir lock B (bloqueado, lo tiene P2).</li>
-            <li><strong>P2:</strong> adquiere lock B, luego intenta adquirir lock A (bloqueado, lo tiene P1).</li>
-          </ul>
-          <p>Resultado: ambos quedan indefinidamente esperando un recurso que nunca será liberado.</p>
-
+          <p>Dos o más procesos esperan por un recurso que el otro tiene, formando una <strong>dependencia cíclica</strong>: ninguno progresa, porque cada uno espera algo que el otro nunca va a liberar. Ejemplo clásico: <strong>P1</strong> tiene el lock A y pide B; <strong>P2</strong> tiene B y pide A.</p>
           <figure class="diagram">
             <div class="mermaid">
         flowchart LR
             A["P1 tiene el lock A y espera B"] -->|espera por B| B["P2 tiene el lock B y espera A"]
             B -->|espera por A| A
             </div>
-            <figcaption>Espera circular: cada proceso bloquea al otro indefinidamente. Cerrado el ciclo, ni P1 ni P2 vuelven a avanzar.</figcaption>
+            <figcaption>Espera circular: cerrado el ciclo, ni P1 ni P2 vuelven a avanzar.</figcaption>
           </figure>
-
-          <h4>Consecuencias en un programa concurrente</h4>
+          <p><strong>Consecuencias:</strong></p>
           <ul class="study-list">
-            <li><strong>La parte afectada del sistema deja de progresar:</strong> los procesos involucrados en el ciclo quedan suspendidos para siempre.</li>
-            <li><strong>Recursos inutilizables:</strong> los locks A y B quedan retenidos sin ser liberados, impidiendo que otros procesos los adquieran.</li>
-            <li><strong>Degradación o detención del rendimiento global:</strong> si los procesos bloqueados eran críticos (ej. threads de procesamiento), el throughput cae drásticamente o se detiene.</li>
-            <li><strong>Requiere intervención externa:</strong> el sistema no puede auto-recuperarse; hay que matar procesos, reiniciar servicios o intervenir manualmente.</li>
+            <li>La parte afectada del sistema <strong>deja de progresar</strong>: los procesos del ciclo quedan suspendidos para siempre.</li>
+            <li>Los <strong>recursos involucrados quedan inutilizables</strong>, retenidos y sin liberarse, bloqueando también a terceros que los necesiten.</li>
+            <li>El rendimiento global se degrada o se detiene, según qué tan críticos sean esos procesos.</li>
+            <li><strong>Requiere intervención externa</strong>: el sistema no se recupera solo.</li>
           </ul>
-
-          <h4>Deadlocks en ambientes de concurrencia distribuida</h4>
-          <p>En sistemas distribuidos los deadlocks adquieren complejidades adicionales por la falta de estado global observable y la comunicación por mensajes:</p>
-
-          <h5>1. No hay estado global observable</h5>
-          <p>En un SO centralizado, el kernel mantiene un <strong>grafo de asignación de recursos</strong> exacto en todo momento. En distribuido, cada proceso solo conoce su estado local; cualquier información sobre el resto del sistema llega por mensajes con delay y puede estar obsoleta.</p>
-
-          <h5>2. Mensajes desordenados generan falsos deadlocks</h5>
-          <p>Un coordinador centralizado puede creer erróneamente que existe un ciclo cuando ya se resolvió, o viceversa, porque los mensajes de liberación de recursos llegan fuera de orden. Esto se mitiga con <strong>orden causal</strong> mediante timestamps de Lamport.</p>
-
-          <h5>3. Detección requiere protocolos activos</h5>
+          <p><strong>Complicaciones adicionales en distribuido:</strong></p>
           <ul class="study-list">
-            <li><strong>Algoritmo centralizado:</strong> un coordinador mantiene el grafo global; los procesos le avisan al tomar y liberar recursos. El coordinador busca ciclos regularmente. Ventaja: simple. Desventaja: <strong>single point of failure</strong> (SPOF).</li>
-            <li><strong>Algoritmo distribuido (Chandy-Misra-Haas):</strong> cuando un proceso se bloquea, envía un <strong>probe message</strong> (indicando el proceso bloqueado, el emisor y el destinatario) al que tiene el recurso. Éste lo reenvía a los procesos de los que él espera. Si el probe vuelve al origen, existe un ciclo. Ventaja: sin SPOF. Desventaja: más mensajes, latencia y complejidad.</li>
+            <li><strong>No hay estado global observable.</strong> Un SO centralizado mantiene un grafo de asignación de recursos exacto; en distribuido cada proceso conoce solo su estado local y todo lo demás llega por mensajes con delay — o sea, <em>toda información del resto es vieja por definición</em>.</li>
+            <li><strong>Mensajes desordenados → falsos deadlocks.</strong> Se puede detectar un ciclo que ya se resolvió, o no ver uno que existe. Se mitiga imponiendo orden causal con timestamps de Lamport.</li>
+            <li><strong>La detección exige protocolos activos por mensajes:</strong> o un coordinador que mantiene el grafo global (simple, pero es un <strong>SPOF</strong>), o <em>probe messages</em> que se reenvían por la cadena de espera y, si vuelven al origen, delatan el ciclo (sin SPOF, pero más mensajes y latencia).</li>
+            <li><strong>La resolución va por prevención con timestamps</strong> (wait-die, wound-wait) en vez de «elegir una víctima» local, para que todos los nodos decidan lo mismo sin consultarse.</li>
+            <li><strong>Las fallas parciales son ambiguas:</strong> si un proceso no responde, no se puede distinguir si está caído, si se perdió el mensaje o si solo está lento.</li>
           </ul>
-
-          <h5>4. Resolución vía prevención con timestamps (no elegir víctima local)</h5>
-          <p>En lugar del enfoque centralizado de elegir qué proceso abortar, los sistemas distribuidos usan timestamps globales de Lamport para ordenar las transacciones y tomar decisiones consistentes en todos los nodos:</p>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Algoritmo</th><th>El que pide es MÁS VIEJO</th><th>El que pide es MÁS JOVEN</th></tr></thead>
-              <tbody>
-        <tr><td><strong>Wait-Die</strong></td><td>Espera (conserva el recurso al más antiguo)</td><td>Aborta (muere) y reintenta después</td></tr>
-        <tr><td><strong>Wound-Wait</strong></td><td>Aborta (hiere) al que tiene el recurso, recuperándolo</td><td>Espera (respeta al proceso más antiguo)</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p>Ambos algoritmos evitan espera circular porque nunca permiten que un proceso viejo espere a uno joven — se impone un orden temporal que previene ciclos (satisface la condición de Coffman).</p>
-
-          <h5>Impacto práctico</h5>
-          <ul class="study-list">
-            <li><strong>Costo de comunicación real:</strong> la detección y resolución implican múltiples rondas de mensajes por la red, no solo lectura de memoria local.</li>
-            <li><strong>Ambigüedad por fallas parciales:</strong> un proceso que no responde puede estar muerto, haber perdido el mensaje, o estar lento. El sistema no puede distinguir estos casos con certeza.</li>
-            <li><strong>Trade-off centralizado vs distribuido:</strong> un coordinador centralizado es simple pero frágil; un sistema distribuido es resiliente pero costoso en comunicación y complejidad.</li>
-          </ul>
-
-          <div class="callout warning">
-            <strong>Matiz de cátedra (para no perder puntos):</strong> el deadlock <strong>rompe SAFETY, no liveness.</strong> Un deadlock es un estado inválido terminal en sí mismo (el sistema entra en una configuración de la que nunca puede salir), no algo que "eventualmente debería suceder y se retrasa" (eso sería liveness). Contraste: la <strong>starvation</strong> es un problema de liveness — el sistema global progresa, pero un proceso queda indefinidamente postergado sin motivo válido.
-          </div>
-
-          <p><strong>Referencia:</strong> <a href="#deadlocks">§16</a></p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> según el criterio de la cátedra el deadlock <strong>rompe safety, no liveness</strong>. Es un estado inválido <em>terminal</em> — en el momento en que se cierra el ciclo ya pasó algo malo y el sistema no puede salir nunca. No es «algo bueno que tarda en pasar»; eso sería la starvation, que sí es liveness. Ver <a href="#deadlocks">§16</a>.</div>
         </details>
         <details>
           <summary>Mecanismos de prevención de deadlocks en distribuido (a detalle)</summary>
-
-          <h4>Contexto: timestamp único y global</h4>
-          <p>Cada transacción recibe un <strong>timestamp único y global</strong> (usando el algoritmo de Lamport, donde cada evento se marca con un número que crece monotónicamente en el sistema) al iniciar. Este timestamp determina el orden lógico de las transacciones: un timestamp más bajo significa una transacción «más vieja» (inició antes). Cuando un proceso se bloquea esperando un recurso que otro proceso tiene, ambos comparan sus timestamps para decidir quién espera y quién aborta, evitando así la espera circular.</p>
-
-          <h4>Algoritmo Wait-Die</h4>
-          <p><strong>Regla:</strong> el que pide el recurso compara su timestamp con el del que lo sostiene:</p>
+          <p>Los dos mecanismos son <strong>Wait-Die</strong> y <strong>Wound-Wait</strong>. Ambos parten de lo mismo: cada transacción recibe al iniciar un <strong>timestamp único y global</strong> (Lamport), y <em>timestamp menor = transacción más vieja</em>. Cuando un proceso va a bloquearse por un recurso que otro tiene, se comparan los timestamps para decidir quién espera y quién aborta.</p>
           <ul class="study-list">
-            <li><strong>Si el que pide es más viejo (timestamp menor):</strong> espera pacientemente.</li>
-            <li><strong>Si el que pide es más joven (timestamp mayor):</strong> aborta su transacción («muere») y la reintenta más tarde con un nuevo timestamp.</li>
+            <li><strong>Wait-Die</strong> (no preemptive): si el que pide es <em>más viejo</em>, <strong>espera</strong>; si es <em>más joven</em>, <strong>aborta</strong> («muere») y reintenta más tarde con un timestamp nuevo. Nadie es abortado por otro: solo se auto-aborta el que pide.</li>
+            <li><strong>Wound-Wait</strong> (preemptive): si el que pide es <em>más viejo</em>, <strong>aborta al que tiene el recurso</strong> («lo hiere») y se lo lleva; si es <em>más joven</em>, <strong>espera</strong>.</li>
           </ul>
-          <p><strong>Por qué previene deadlock:</strong> este algoritmo impide que una transacción más joven espere por una más vieja. Dado que cada proceso solo puede esperar a uno más viejo, no es posible formar un ciclo de espera circular (si P1 espera a P2, entonces P1 es más viejo que P2; si P2 esperara a P1, sería más viejo, contradicción). De esta forma, rompe la <strong>condición de espera circular</strong> de Coffman mediante un orden total basado en timestamps.</p>
-          <p><strong>Naturaleza:</strong> <em>no-preemptive</em> — nadie es abortado contra su voluntad; solo se aborta quien intenta pedir (y es más joven).</p>
-          <p><strong>Costo:</strong> transacciones jóvenes pueden abortar frecuentemente, generando rollbacks y reintentos. En sistemas con alta actividad de escritura, esto puede acumular muchos aborts.</p>
-
-          <h4>Algoritmo Wound-Wait</h4>
-          <p><strong>Regla:</strong> el que pide el recurso compara su timestamp con el del que lo sostiene:</p>
-          <ul class="study-list">
-            <li><strong>Si el que pide es más viejo (timestamp menor):</strong> aborta («hiere») al que tiene el recurso, tomándolo para sí.</li>
-            <li><strong>Si el que pide es más joven (timestamp mayor):</strong> espera pacientemente.</li>
-          </ul>
-          <p><strong>Por qué previene deadlock:</strong> este algoritmo impide que transacciones más jóvenes bloqueen a las más viejas. Invierte la dirección de la espera respecto a Wait-Die: si P1 (más viejo) necesita un recurso de P2 (más joven), P1 lo arrebata; si P2 necesita algo de P1, P2 espera. Nuevamente, no hay ciclo posible porque la dirección está forzada por el orden de timestamps.</p>
-          <p><strong>Naturaleza:</strong> <em>preemptive</em> — una transacción puede ser abortada por orden de otra (la más vieja desaloja a la más joven).</p>
-          <p><strong>Costo:</strong> transacciones viejas tienen prioridad absoluta, reduciendo sus aborts. Sin embargo, una transacción vieja puede hacer abortar varias más jóvenes. Generalmente tiene <strong>menor número de aborts y rollbacks</strong> que Wait-Die, porque las transacciones largas/importantes (viejas) se protegen y progresan sin reintentos.</p>
-
-          <h4>Tabla comparativa</h4>
+          <p><strong>Por qué previenen el deadlock:</strong> los dos rompen la <strong>espera circular</strong> de Coffman forzando que las esperas vayan siempre en una única dirección del orden temporal. En Wait-Die solo un viejo puede esperar a un joven; en Wound-Wait solo un joven puede esperar a un viejo. Como los timestamps son un orden total y estricto, una cadena de esperas nunca puede volver a su origen: no hay ciclo posible.</p>
           <div class="table-wrap">
             <table>
-              <thead>
-                <tr>
-                  <th>Situación</th>
-                  <th>Wait-Die</th>
-                  <th>Wound-Wait</th>
-                </tr>
-              </thead>
+              <thead><tr><th>Situación</th><th>Wait-Die</th><th>Wound-Wait</th></tr></thead>
               <tbody>
-                <tr>
-                  <td>P_viejo pide, P_joven tiene</td>
-                  <td>P_viejo espera</td>
-                  <td>P_joven aborta, P_viejo toma</td>
-                </tr>
-                <tr>
-                  <td>P_joven pide, P_viejo tiene</td>
-                  <td>P_joven aborta y reintenta</td>
-                  <td>P_joven espera</td>
-                </tr>
-                <tr>
-                  <td>Preemptiveness</td>
-                  <td>No-preemptive (solo auto-aborto)</td>
-                  <td>Preemptive (desalojo forzado)</td>
-                </tr>
-                <tr>
-                  <td>Aborts típicos</td>
-                  <td>Muchos (jóvenes abortan frecuente)</td>
-                  <td>Menos (viejos protegidos)</td>
-                </tr>
-                <tr>
-                  <td>Cuándo conviene</td>
-                  <td>Baja contención, muchas transacciones jóvenes</td>
-                  <td>Alta contención, importancia de transacciones largas</td>
-                </tr>
+        <tr><td>Pide el <strong>viejo</strong>, lo tiene el joven</td><td>El viejo espera</td><td>El joven aborta; el viejo lo toma</td></tr>
+        <tr><td>Pide el <strong>joven</strong>, lo tiene el viejo</td><td>El joven aborta y reintenta</td><td>El joven espera</td></tr>
+        <tr><td>Tipo</td><td>No preemptive (solo auto-aborto)</td><td><strong>Preemptive</strong> (desalojo forzado)</td></tr>
+        <tr><td>Aborts y rollbacks</td><td>Más: los jóvenes abortan seguido</td><td><strong>Menos</strong>: las viejas quedan protegidas y progresan</td></tr>
               </tbody>
             </table>
           </div>
-
-          <h4>Rompen la condición de espera circular de Coffman</h4>
-          <p>Los cuatro requisitos para que exista un deadlock (condiciones de Coffman) son: <em>exclusión mutua, espera y retención, no apropiación, y espera circular</em>. Ambos algoritmos rompen la <strong>espera circular</strong> al imponer un orden global basado en timestamps: en lugar de permitir ciclos arbitrarios (P1→recurso-A→P2→recurso-B→P1), solo permiten esperas que respetan el orden temporal. Una transacción no puede esperar indefinidamente en una cadena que vuelve a ella porque los timestamps son estrictamente ordenados y acíclicos.</p>
-
-          <h4>Matiz: no confundir con exclusión mutua distribuida</h4>
-          <div class="callout warning">
-            <strong>Prevención de deadlock vs. exclusión mutua distribuida — son problemas distintos:</strong><br>
-            • <strong>Exclusión mutua distribuida</strong> (centralizado, Ricart-Agrawala, Token Ring): garantiza que <em>un solo proceso a la vez</em> entre a la sección crítica sobre <em>un recurso puntual</em>.<br>
-            • <strong>Prevención de deadlock</strong> (Wait-Die, Wound-Wait): evita ciclos cuando hay <em>múltiples recursos</em> y cada proceso puede pedir varios en orden. Son complementarios: el mutex distribuido protege un recurso individual; la prevención de deadlock evita que el uso coordinado de varios mutex se trabe en un ciclo global.
-          </div>
-
-          <h4>Comparación con detección</h4>
-          <p>Un tercer enfoque (no prevención, sino <strong>detección</strong>) existe en sistemas distribuidos: usar probe messages (Chandy-Misra-Haas) para detectar un ciclo <em>después</em> de que se forma, y luego romperlo abortando una transacción. Wait-Die y Wound-Wait <strong>previenen</strong> el ciclo de antemano, nunca permitiendo que se forme.</p>
-
-          <p class="exam-answer"><strong>En el final:</strong> explicar esta respuesta con el timestamp de Lamport, desarrollar ambos algoritmos regla por regla, y mostrar la tabla comparativa. Aclarar que rompen la espera circular de Coffman usando orden de timestamps en vez de orden fijo de recursos, y distinguir prevención de deadlock (múltiples recursos) de exclusión mutua distribuida (un recurso). Referencia: <a href="#deadlocks">§16</a>.</p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> no confundir <strong>prevención de deadlock</strong> con <strong>exclusión mutua distribuida</strong>. La exclusión mutua (centralizado, Ricart-Agrawala, token ring) garantiza que entre <em>un solo proceso a la vez</em> a la sección crítica de <strong>un</strong> recurso. La prevención evita que se forme un ciclo cuando hay <strong>varios</strong> recursos y cada proceso pide más de uno. Son complementarias: podés tener bien resuelta la exclusión mutua de cada recurso y aun así trabarte en un ciclo global. Ver <a href="#deadlocks">§16</a>.</div>
         </details>
         <details>
           <summary>[Parcial] ¿Es busy-wait? Analizar fragmentos de código</summary>
@@ -3445,163 +3283,79 @@ handle.join().unwrap();</code></pre>
 
         <details>
           <summary>Comparar los efectos negativos: deadlock, race condition, starvation y busy-wait</summary>
-          <p>La corrección de un programa concurrente se demuestra sobre dos clases de propiedades: <strong>safety</strong> («algo malo nunca pasa») y <strong>liveness</strong> («algo bueno eventualmente pasa»). Los cuatro efectos negativos se distribuyen entre estas propiedades:</p>
-
+          <p>Los cuatro se comparan encuadrándolos primero en las dos clases de propiedades de corrección: <strong>safety</strong> («algo malo nunca pasa») y <strong>liveness</strong> («algo bueno eventualmente pasa»).</p>
           <div class="table-wrap">
             <table>
-              <thead>
-        <tr>
-          <th>Efecto</th>
-          <th>Qué es</th>
-          <th>Propiedad que rompe</th>
-          <th>Efecto en el programa</th>
-          <th>Cómo se corrige</th>
-        </tr>
-              </thead>
+              <thead><tr><th>Efecto</th><th>Qué es</th><th>Qué rompe</th><th>Efecto en el programa</th><th>Cómo se corrige</th></tr></thead>
               <tbody>
         <tr>
           <td><strong>Deadlock</strong></td>
-          <td>Un conjunto de procesos queda bloqueado indefinidamente, cada uno esperando un recurso que otro del conjunto posee (A espera el recurso 2 teniendo el 1; B espera el 1 teniendo el 2).</td>
-          <td><strong>Safety</strong> (ausencia de deadlock es propiedad de seguridad)</td>
-          <td>El sistema se congela, la ejecución se detiene de forma terminal. Si es crítico, parece como si se hubiera colgado.</td>
-          <td>Romper una condición de Coffman: ordenar la toma de recursos, permitir preemption, o no permitir hold-and-wait.</td>
+          <td>Un conjunto de procesos queda bloqueado indefinidamente, cada uno esperando un recurso que otro del conjunto tiene (P1 tiene A y espera B; P2 tiene B y espera A).</td>
+          <td><strong>Safety</strong></td>
+          <td>Terminal: ninguno de los involucrados progresa nunca más. Los recursos quedan inutilizables y hace falta intervención externa.</td>
+          <td>Romper una de las 4 condiciones de Coffman (en la práctica, orden total de adquisición de recursos).</td>
         </tr>
         <tr>
           <td><strong>Race condition</strong></td>
-          <td>Dos o más procesos acceden a estado compartido sin sincronización adecuada y el resultado depende del orden (timing) de ejecución.</td>
+          <td>Dos o más procesos acceden a estado compartido sin sincronización y el resultado depende del interleaving.</td>
           <td><strong>Safety</strong> (exclusión mutua)</td>
-          <td>Bug intermitente no reproducible; datos corruptos, resultados incorrectos que varían según el interleaving. Difícil de detectar en testing.</td>
-          <td>Serializar el acceso al estado compartido: usar lock, semáforo, actor, o condvar para garantizar exclusión mutua.</td>
+          <td>Bug intermitente y no reproducible: datos corruptos y resultados que cambian entre corridas. Casi invisible en testing.</td>
+          <td>Serializar el acceso al estado compartido: lock, semáforo, monitor o actores.</td>
         </tr>
         <tr>
           <td><strong>Starvation</strong></td>
-          <td>Un proceso listo y esperando un recurso nunca lo obtiene porque otros lo acaparan indefinidamente, aunque el sistema en general sigue progresando.</td>
-          <td><strong>Liveness</strong> (ausencia de starvation)</td>
-          <td>Injusticia: un proceso particular queda postergado para siempre, pierde fairness, aunque los demás avanzan normalmente.</td>
-          <td>Implementar política fair (FIFO, envejecimiento, timestamps como en wait-die/wound-wait) que ordene el acceso por antigüedad.</td>
+          <td>Un proceso listo y esperando un recurso nunca lo obtiene porque otros lo acaparan, aunque el sistema en general avanza.</td>
+          <td><strong>Liveness</strong></td>
+          <td>Falla individual: ese proceso queda postergado para siempre; el resto funciona normalmente.</td>
+          <td>Política <em>fair</em>: cola FIFO, envejecimiento, u orden por antigüedad (wait-die / wound-wait).</td>
         </tr>
         <tr>
           <td><strong>Busy-wait</strong></td>
-          <td>Un hilo gira en un loop chequeando una condición para poder avanzar, consumiendo CPU sin hacer trabajo útil.</td>
-          <td>Ninguna propiedad de <strong>corrección</strong> (es problema de <strong>eficiencia</strong>)</td>
-          <td>Mal uso de CPU que degrada el rendimiento de otros procesos, aunque la lógica de sincronización sea correcta. Desperdicio energético.</td>
-          <td>Reemplazar el spin por bloqueo real (semáforo, condition variable, <code>park</code>) para ceder CPU al SO.</td>
+          <td>Un hilo <em>pollea</em> una condición en un loop para poder avanzar, en vez de bloquearse. El <code>sleep</code> baja el consumo pero no cambia la naturaleza.</td>
+          <td><strong>Nada</strong>: no rompe corrección, es un problema de <em>eficiencia</em></td>
+          <td>Quema CPU sin trabajo útil y degrada a los demás procesos, aunque la lógica de sincronización sea correcta.</td>
+          <td>Bloquearse de verdad: semáforo o variable de condición, para que el SO despierte al hilo cuando ocurre el evento.</td>
         </tr>
               </tbody>
             </table>
           </div>
-
-          <ul class="study-list">
-            <li>
-              <strong>Deadlock:</strong>
-              <ul class="study-list">
-        <li><strong>Definición:</strong> situación en la que un conjunto de procesos queda bloqueado indefinidamente porque cada uno espera un recurso que otro del conjunto tiene. Requiere que se cumplan simultáneamente las cuatro condiciones de Coffman: exclusión mutua, hold-and-wait, no-preemption y espera circular.</li>
-        <li><strong>Causa / mecanismo:</strong> cuando hay múltiples recursos y los procesos los adquieren sin un orden coordinado, pueden formar ciclos de espera. Por ejemplo, P1 toma recurso A y espera B; P2 toma B y espera A.</li>
-        <li><strong>Efecto concreto:</strong> el programa se congela completamente en ese punto. Ninguno de los procesos involucrados progresa nunca más. Si estos procesos son críticos para el sistema, el resultado es un sistema aparentemente "muerto" o colgado.</li>
-        <li><strong>Corrección:</strong> impedir deadlock rompiendo una de las cuatro condiciones de Coffman. En la práctica, lo más común es impedir espera circular ordenando la adquisición de recursos (si siempre pides A antes que B) o usando algoritmos distribuidos como wait-die (el más viejo espera, el más joven aborta y reintenta).</li>
-              </ul>
-            </li>
-
-            <li>
-              <strong>Race condition:</strong>
-              <ul class="study-list">
-        <li><strong>Definición:</strong> el resultado de la ejecución depende del orden en que se intercalen las instrucciones de múltiples procesos que acceden a estado compartido sin sincronización.</li>
-        <li><strong>Causa / mecanismo:</strong> falta de exclusión mutua. Dos procesos leen, modifican y escriben la misma variable sin coordinarse. Entre la lectura y la escritura de uno, el otro puede haber modificado el valor. Ejemplo clásico: dos threads incrementan un contador sin lock; ambos leen 5, incrementan a 6, y escriben 6 — el resultado es 6 en lugar de 7.</li>
-        <li><strong>Efecto concreto:</strong> bug no determinista. El programa puede funcionar correctamente en una corrida (si el timing es favorable) y fallar en otra (si el timing es adverso). Datos corruptos, cálculos incorrectos, inconsistencia de invariantes. Muy difícil de reproducir y debuguear.</li>
-        <li><strong>Corrección:</strong> usar un mecanismo de sincronización que garantice exclusión mutua: lock, semáforo binario, condvar, o modelo de actores (que serializa el acceso por diseño). La sección crítica debe ser lo más pequeña posible.</li>
-              </ul>
-            </li>
-
-            <li>
-              <strong>Starvation (inanición):</strong>
-              <ul class="study-list">
-        <li><strong>Definición:</strong> un proceso que está listo y esperando acceso a un recurso nunca lo obtiene porque otros procesos lo acaparan indefinidamente, aunque el sistema global sigue avanzando.</li>
-        <li><strong>Causa / mecanismo:</strong> política de scheduling injusta o no-fair. Ejemplo: si hay una cola de procesos esperando un lock pero el scheduler no respeta FIFO, procesos nuevos pueden «colarse» y tomar el lock antes que los que ya estaban esperando. O en sistemas distribuidos, el proceso más joven puede ser expropiado siempre por el más viejo (wound-wait).</li>
-        <li><strong>Efecto concreto:</strong> ese proceso en particular nunca progresa, aunque otros sí. Falta de fairness. En sistemas de tiempo real o de justicia (p. ej. un servidor web), significa que ciertos clientes quedan sin servir indefinidamente.</li>
-        <li><strong>Corrección:</strong> implementar una política fair: colas FIFO (el primero en llegar es el primero en servirse), envejecimiento (dar prioridad a procesos que llevan más tiempo esperando), o timestamps (wait-die: el más viejo espera; wound-wait: el más joven se aborta).</li>
-              </ul>
-            </li>
-
-            <li>
-              <strong>Busy-wait (espera activa):</strong>
-              <ul class="study-list">
-        <li><strong>Definición:</strong> un hilo gira continuamente en un loop chequeando una condición (p. ej. <code>while !condition { }</code> o con <code>sleep</code>), consumiendo CPU sin hacer trabajo útil, solo esperando a que algo externo cambie el estado.</li>
-        <li><strong>Causa / mecanismo:</strong> usar polling (preguntar repetidamente) en lugar de bloquearse en un mecanismo que el SO controle (semáforo, condvar). El hilo no se duerme realmente; solo cede CPU brevemente (si hay sleep) y vuelve a chequear.</li>
-        <li><strong>Efecto concreto:</strong> uso excesivo de CPU. El hilo consume ciclos de procesador sin hacer trabajo útil, degradando el rendimiento de otros procesos y aumentando el consumo de energía. Sin embargo, <strong>la lógica puede ser correcta</strong>: si la condición se cumple, el programa avanza (así sea ineficientemente).</li>
-        <li><strong>Corrección:</strong> bloquearse en lugar de hacer polling. Usar un semáforo (para una condición binaria), una condition variable (para condiciones más complejas), u otro mecanismo que el SO controle. El SO despierta el hilo solo cuando ocurre el evento, sin que el hilo gaste ciclos chequeando.</li>
-              </ul>
-            </li>
-          </ul>
-
-          <div class="callout warning">
-            <strong>Matiz para no perder puntos: deadlock vs starvation.</strong> En deadlock, <em>nadie</em> de los procesos involucrados progresa nunca — es un estado terminal que rompe <strong>safety</strong> (la ausencia de deadlock es una propiedad de seguridad: nunca debe alcanzarse ese estado). En starvation, el sistema en general <em>sí</em> progresa — otros procesos avanzan normalmente — pero un proceso puntual queda postergado indefinidamente, violando <strong>liveness</strong> (ausencia de starvation: todo proceso que está listo debe eventualmente obtener el recurso).
-          </div>
-
-          <div class="callout blue">
-            <strong>Otro matiz importante: busy-wait no rompe corrección.</strong> Un programa con busy-wait puede ser completamente correcto (exclusión mutua garantizada, sin deadlock, sin race conditions) pero ser muy ineficiente (quema CPU innecesariamente). Es un problema de <strong>eficiencia y recursos</strong>, no de <strong>corrección</strong>. Sin embargo, la ineficiencia puede ser tan severa que degradue a otros procesos, por eso se considera un efecto negativo que debe evitarse.
-          </div>
-
-          <p><a href="#correccion">§10</a></p>
+          <div class="callout warning"><strong>Para no perder puntos — deadlock vs starvation:</strong> en el deadlock <em>nadie</em> de los involucrados progresa nunca más; es un estado terminal, y por eso la cátedra clasifica la ausencia de deadlock como <strong>safety</strong> (nunca se debe llegar a ese estado), no como liveness. En la starvation el sistema <em>sí</em> progresa y solo un proceso puntual queda postergado: eso sí es <strong>liveness</strong>. Ver <a href="#correccion">§10</a>.</div>
         </details>
         <details>
           <summary>Las 4 condiciones de Coffman para que ocurra un deadlock</summary>
-
-          <p>Un deadlock es posible <strong>solo si se cumplen simultáneamente las cuatro condiciones</strong> de Coffman. Romper una sola alcanza para prevenirlo:</p>
-
+          <p>Un deadlock es posible <strong>solo si se cumplen las cuatro simultáneamente</strong>. Romper una sola alcanza para prevenirlo:</p>
           <div class="table-wrap">
             <table>
-              <thead>
-        <tr>
-          <th>Condición</th>
-          <th>Definición precisa</th>
-          <th>Estrategia para romperla</th>
-          <th>Viabilidad práctica</th>
-        </tr>
-              </thead>
+              <thead><tr><th>Condición</th><th>Qué significa</th><th>Cómo se rompe</th><th>Viabilidad</th></tr></thead>
               <tbody>
         <tr>
           <td><strong>Exclusión mutua</strong></td>
           <td>Un recurso solo puede estar en poder de un proceso a la vez.</td>
-          <td>Permitir que múltiples procesos usen el recurso simultáneamente (ej. lock de lectura compartido).</td>
-          <td>No siempre viable: algunos recursos (archivo en escritura, transacción crítica) <em>requieren</em> exclusión mutua.</td>
+          <td>Permitir acceso simultáneo (ej.: lock de lectura compartido).</td>
+          <td>No siempre posible: hay recursos que requieren acceso exclusivo por naturaleza.</td>
         </tr>
         <tr>
-          <td><strong>Espera y retención<br/>(Hold and Wait)</strong></td>
-          <td>Un proceso retiene recursos mientras espera obtener otros adicionales.</td>
-          <td>Pedir todos los recursos necesarios de una vez, antes de empezar; si no hay, no tomar ninguno.</td>
-          <td>Viable pero restrictiva: obliga a conocer de antemano qué recursos se usarán y aumenta contención.</td>
+          <td><strong>Retención y espera</strong> (hold and wait)</td>
+          <td>Un proceso retiene recursos mientras espera obtener otros.</td>
+          <td>Pedir todos los recursos de una vez antes de empezar; si no están todos, no tomar ninguno.</td>
+          <td>Restrictiva: obliga a saber de antemano qué se va a usar y aumenta la contención.</td>
         </tr>
         <tr>
-          <td><strong>No apropiación<br/>(No Preemption)</strong></td>
-          <td>Un recurso no puede ser arrebatado por la fuerza; solo se libera voluntariamente.</td>
-          <td>Permitir que el sistema le quite (preempt) un recurso a un proceso (ej. desalojar)..</td>
-          <td>Viable en algunos contextos (CPU), muy difícil en otros (I/O persistente, transacciones parciales).</td>
+          <td><strong>No apropiación</strong> (no preemption)</td>
+          <td>Un recurso no puede arrebatarse por la fuerza; solo se libera voluntariamente.</td>
+          <td>Permitir que el sistema le quite el recurso a un proceso.</td>
+          <td>Factible con la CPU; difícil con I/O o transacciones a medio hacer.</td>
         </tr>
         <tr>
-          <td><strong>Espera circular<br/>(Circular Wait)</strong></td>
-          <td>Existe un ciclo P1→P2→...→Pn→P1 donde cada uno espera un recurso que tiene el siguiente.</td>
-          <td>Imponer un <strong>orden total de adquisición</strong> (ej. siempre pedir A antes que B); o usar <strong>timestamps</strong> para decidir quién espera/aborta.</td>
-          <td><strong>Más usada en la práctica:</strong> fácil de implementar sin sacrificar mucho rendimiento.</td>
+          <td><strong>Espera circular</strong></td>
+          <td>Hay un ciclo P1→P2→…→Pn→P1 donde cada uno espera un recurso que tiene el siguiente.</td>
+          <td>Imponer un <strong>orden total de adquisición</strong> de recursos (siempre pedir A antes que B).</td>
+          <td><strong>La más usada:</strong> fácil de implementar y sin gran costo de rendimiento.</td>
         </tr>
               </tbody>
             </table>
           </div>
-
-          <h4>Prevención en sistemas distribuidos: wait-die y wound-wait</h4>
-          <p>En sistemas distribuidos, romper la espera circular usando <strong>orden de timestamps</strong> es la estrategia preferida. Cada transacción recibe un timestamp único (Lamport) al iniciar. Cuando un proceso se bloquea por un recurso que otro tiene, se comparan timestamps (más chico = más «viejo»):</p>
-
-          <ul class="study-list">
-            <li><strong>Wait-Die:</strong> si el que pide es <em>más viejo</em> que el que tiene el recurso, espera; si es más <em>joven</em>, aborta (die) y reintenta. Mnemónico: «vieja espera, joven muere».</li>
-            <li><strong>Wound-Wait:</strong> si el que pide es <em>más viejo</em>, fuerza el abort (wound) del que tiene el recurso; si es más <em>joven</em>, espera. Mnemónico: «vieja hiriente, joven paciente».</li>
-          </ul>
-
-          <p>Ambos algoritmos <strong>rompen la espera circular</strong> porque solo se permite esperar en una dirección del orden temporal — el viejo nunca espera al joven —, garantizando una ordenación global que previene ciclos.</p>
-
-          <div class="callout warning">
-            <strong>Matiz clave (para no perder puntos):</strong> romper exclusión mutua frecuentemente no es posible porque hay recursos que <strong>intrínsecamente</strong> requieren acceso exclusivo (un dato siendo escrito, un archivo en transacción crítica). La mayoría de sistemas confían en romper la espera circular mediante orden de recursos o timestamps, que es la más viable: fácil de implementar (define un orden fijo de adquisición o usa timestamps del sistema) y tolerable en carga típica sin degradar performance significativamente.
-          </div>
-
-          <p><a href="#deadlocks">§16</a>, <a href="#correccion">§10</a>.</p>
+          <p>Ver <a href="#deadlocks">§16</a>.</p>
         </details>
         <details>
           <summary>¿Qué es un semáforo? Operaciones y variables internas</summary>
@@ -3643,349 +3397,127 @@ handle.join().unwrap();</code></pre>
           <p>Ver <a href="#semaforos">§12</a>.</p>
         </details>
         <details>
-        <summary>¿Qué es un mutex? Operaciones y diferencia con el semáforo</summary>
-
-        <h4>Definición: Mutex en Rust</h4>
-        <p><strong>Mutex</strong> (en Rust: <code>std::sync::Mutex&lt;T&gt;</code>) garantiza <strong>exclusión mutua</strong> entre hilos: solo un thread a la vez accede a la sección crítica. A diferencia del semáforo, tiene <strong>noción de dueño</strong>: envuelve el dato compartido y solo quien hizo <code>lock()</code> puede hacer <code>unlock()</code>.</p>
-
-        <h4>Operaciones básicas</h4>
-        <ul class="study-list">
-        <li><code>lock()</code>: el hilo se bloquea hasta poder obtener el mutex, devuelve un <code>MutexGuard&lt;T&gt;</code>.</li>
-        <li><code>unlock()</code> (o <code>drop()</code> del guard): libera el mutex. En Rust, ocurre automáticamente al salir del scope (patrón RAII).</li>
-        <li>Requieren soporte de <strong>hardware y sistema operativo</strong> (instrucciones atómicas tipo <em>test-and-set</em>).</li>
-        </ul>
-
-        <h4>Detalles de Rust</h4>
-        <p><code>Mutex&lt;T&gt;</code> envuelve el dato (no es un lock suelto al lado); <code>.lock()</code> devuelve un <code>MutexGuard&lt;T&gt;</code> que se libera por <strong>RAII</strong> al salir del scope o con <code>drop()</code> explícito. Crucialmente, <strong><code>MutexGuard&lt;T&gt;</code> no implementa <code>Send</code></strong>: el compilador impide pasarlo a otro hilo para que lo libere — solo el mismo hilo que hizo <code>lock()</code> puede liberarlo. El patrón para mutar estado compartido entre hilos es <code>Arc&lt;Mutex&lt;T&gt;&gt;</code> (compartir + serializar).</p>
-
-        <p>Un mutex puede quedar <strong>envenenado (poisoned)</strong> si un hilo que lo tomó hace <code>panic!()</code> mientras lo tiene: las llamadas posteriores a <code>lock()</code> devuelven <code>Err</code>. Por eso casi siempre ves <code>.lock().unwrap()</code> — estás propagando ese posible envenenamiento.</p>
-
-        <h4>Comparación: Mutex vs Semáforo binario</h4>
-
-        <div class="table-wrap">
-        <table>
-        <thead><tr><th></th><th>Mutex</th><th>Semáforo binario</th></tr></thead>
-        <tbody>
-        <tr><td><strong>Quién libera</strong></td><td>Solo el mismo thread que lo tomó</td><td>Cualquier thread puede hacer <code>signal()</code></td></tr>
-        <tr><td><strong>Simetría</strong></td><td><code>lock()</code>/<code>unlock()</code> los usa el mismo hilo</td><td><code>wait()</code>/<code>signal()</code> pueden ser hilos distintos</td></tr>
-        <tr><td><strong>Expresividad</strong></td><td>Solo exclusión mutua</td><td>Puede modelar cantidad arbitraria de recursos</td></tr>
-        <tr><td><strong>Tipo de dato</strong></td><td>Envuelve un objeto concreto (<code>MutexGuard</code>)</td><td>Operaciones independientes sobre un contador</td></tr>
-        </tbody>
-        </table>
-        </div>
-
-        <h4>La diferencia clave</h4>
-
-        <div class="callout warning">
-        <p><strong>NO es "qué hacen", sino "quién puede operar":</strong></p>
-        <p>El <strong>mutex</strong> está pensado como <strong>propiedad de un mismo hilo</strong> — una llave que me llevo y devuelvo yo mismo. Solo quien tomó el lock puede liberarlo; el compilador lo enforza a través del tipo <code>MutexGuard&lt;T&gt;</code> que no es <code>Send</code>.</p>
-        <p>El <strong>semáforo</strong> es una <strong>herramienta de sincronización entre hilos distintos</strong>. Uno hace <code>wait()</code> (se bloquea), otro hace <code>signal()</code> que lo despierta — no hay noción de "dueño". <code>signal()</code> no necesita ningún "comprobante" previo: cualquier hilo puede llamarlo, haya hecho <code>wait()</code> o no.</p>
-        <p>Por eso el semáforo es la herramienta natural para productor-consumidor: el consumidor espera y es el <strong>productor (hilo distinto)</strong> quien lo despierta. En Rust, <code>Mutex&lt;T&gt;</code> + <code>Condvar</code> es cómo se construye un semáforo "a mano".</p>
-        </div>
-
-        <h4>¿No son intercambiables un mutex binario y un semáforo?</h4>
-        <p>No. Aunque los dos dan exclusión mutua, son distintos:</p>
-        <ul class="study-list">
-        <li><code>lock()</code>/<code>drop()</code>: se libera un objeto nominal que te entregaron a vos (<code>MutexGuard</code>). Solo quien lo tiene puede liberarlo.</li>
-        <li><code>wait()</code>/<code>signal()</code>: operaciones independientes sobre un contador compartido. <code>signal()</code> es una operación libre — cualquier hilo puede hacerla, haya hecho <code>wait()</code> o no.</li>
-        </ul>
-        <p>Un mutex de un hilo A no protege la misma sección si B no coopera; un semáforo sí porque es una barrera de recursos. En productor-consumidor, necesitás que el productor pueda "despertar" al consumidor sin que el consumidor lo "dueño" primero — eso es <code>signal()</code>, no <code>drop()</code>.</p>
-
-        <p><strong>En el final:</strong> diferenciá qué datos comparten (mutex envuelve el dato; semáforo es abstracto), quién puede liberar (solo dueño vs cualquiera), y por qué productor-consumidor usa semáforo (comunicación entre hilos distintos, no protección de un objeto puntual). Mencioná que <code>MutexGuard</code> no es <code>Send</code> — eso es donde Rust enforza la noción de dueño a nivel de tipos. Ver <a href="#locks">§11</a>.</p>
-
+          <summary>¿Qué es un mutex? Operaciones y diferencia con el semáforo</summary>
+          <p>Garantiza <strong>exclusión mutua</strong>: un solo proceso accede a la sección crítica a la vez. Sus dos operaciones son <code>lock()</code> (toma el mutex, o bloquea al proceso hasta poder tomarlo) y <code>unlock()</code> (lo libera). Requiere soporte de hardware y del SO: instrucciones atómicas del tipo <em>test-and-set</em>.</p>
+          <p>En Rust, <code>Mutex&lt;T&gt;</code> <strong>envuelve el dato</strong> en vez de ser un lock suelto al lado; <code>.lock()</code> devuelve un <code>MutexGuard&lt;T&gt;</code> que libera solo al salir de scope (<strong>RAII</strong>), o antes con <code>drop()</code>. El patrón para mutar estado compartido entre hilos es <code>Arc&lt;Mutex&lt;T&gt;&gt;</code>.</p>
+          <p><strong>Diferencia con el semáforo</strong> — la clave no es <em>qué hacen</em> sino <strong>quién puede operar</strong>:</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th></th><th>Mutex</th><th>Semáforo binario</th></tr></thead>
+              <tbody>
+        <tr><td><strong>Quién libera</strong></td><td>Solo el mismo thread que lo tomó</td><td><strong>Cualquier</strong> thread puede hacer <code>signal()</code></td></tr>
+        <tr><td><strong>Simetría</strong></td><td><code>lock</code>/<code>unlock</code> los usa el mismo hilo</td><td><code>wait</code>/<code>signal</code> pueden ser hilos distintos</td></tr>
+        <tr><td><strong>Expresividad</strong></td><td>Solo exclusión mutua</td><td>Modela una cantidad arbitraria de recursos</td></tr>
+        <tr><td><strong>Qué representa</strong></td><td>Un dato concreto protegido</td><td>Un contador abstracto, sin dato asociado</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>El mutex tiene <strong>noción de dueño</strong>: es una llave que me llevo y devuelvo yo mismo. Rust lo impone a nivel de tipos — <code>MutexGuard&lt;T&gt;</code> <strong>no implementa <code>Send</code></strong>, así que el compilador no te deja pasárselo a otro hilo para que lo libere. El semáforo, en cambio, sincroniza <strong>entre hilos distintos</strong>: uno hace <code>wait()</code> y otro hace el <code>signal()</code> que lo despierta.</p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> un semáforo binario y un mutex <strong>no son intercambiables</strong>, aunque los dos den exclusión mutua. Por eso productor-consumidor se resuelve con semáforos y no con un mutex: el consumidor se bloquea y lo tiene que despertar el <em>productor</em>, que es otro hilo, y <code>signal()</code> no necesita ningún «comprobante» previo — cualquiera lo llama, haya hecho <code>wait()</code> o no. Ver <a href="#locks">§11</a>.</div>
         </details>
         <details>
           <summary>¿Qué es una barrera y qué operación tiene?</summary>
-          <p>Una <strong>barrera</strong> (<code>std::sync::Barrier</code>) es un mecanismo de sincronización que obliga a un conjunto de <em>N</em> procesos/threads a <strong>esperar en un punto específico</strong> del cómputo hasta que todos hayan llegado. Ninguno continúa hasta que llegan todos. La operación es esencialmente una sola: <code>wait()</code>.</p>
-
-          <h4>Mecanismo</h4>
-          <p>Cada thread que alcanza la barrera ejecuta <code>wait()</code>. Si todavía no llegaron todos, queda <strong>bloqueado</strong>. Cuando el <em>último</em> thread alcanza la barrera, se liberan simultáneamente todos los bloqueados y continúan su ejecución. Las barreras de Rust son <strong>reutilizables automáticamente</strong>: tras liberar a todos, la barrera se reinicia para la siguiente fase.</p>
-
-          <h4>Concepto de líder en Rust</h4>
-          <p>En <code>std::sync::Barrier</code>, <code>BarrierWaitResult::is_leader()</code> devuelve <code>true</code> <strong>solo para el último hilo que llega</strong> (el «líder») y <code>false</code> para el resto. <strong>Por qué tiene sentido:</strong> todos los hilos quedan bloqueados hasta que llega el último. Ese último hilo es el único que, en el momento de su llegada, ya <em>sabe con certeza</em> que la condición de desbloqueo se cumplió, porque su propia llegada la completa. Sirve para que exactamente un hilo haga una acción puntual tras la sincronización (loguear, consolidar resultado) sin necesidad de sincronización extra.</p>
-
-          <h4>Uso clásico: sincronización por fases</h4>
-          <p>Una barrera <strong>asegura que todos terminen una etapa antes de que cualquiera avance a la siguiente</strong>. El requisito clave es que el trabajo se divida en <strong>rondas/fases bien definidas</strong>, donde una fase depende de que la anterior haya sido completada por todas las subtareas. Ejemplos reales:</p>
-          <ul class="study-list">
-            <li><strong>Simulaciones por pasos</strong> (física, juegos): cada paso de tiempo necesita que todos los agentes actualicen su estado antes de calcular el siguiente frame.</li>
-            <li><strong>Algoritmos paralelos por fases</strong>: multiplicación de matrices por bloques, donde cada bloque depende de que otros bloques terminen su cálculo.</li>
-            <li><strong>Motores de videojuegos:</strong> renderizado, física e IA sincronizados por frame — cada subsistema debe terminar su fase antes de que comience el siguiente.</li>
-            <li><strong>Problema del banquero (cátedra):</strong> dos barreras — una para «todos listos para iniciar la semana» antes de repartir dinero, otra para «todos calcularon su parte» antes de permitir retiros.</li>
-          </ul>
-
-          <h4>Implementación en Rust</h4>
-          <pre class="code" data-lang="rust"><code>// Barrera: los N threads se esperan mutuamente en un punto antes de seguir
-        use std::sync::{Arc, Barrier};
-        use std::thread;
-
-        let n = 4;
-        let barrier = Arc::new(Barrier::new(n));
-        let mut hs = vec![];
-        for _ in 0..n {
-            let barrier = Arc::clone(&amp;barrier);
-            hs.push(thread::spawn(move || {
-        // fase 1: cada thread hace su parte...
-        let res = barrier.wait();                // BLOQUEA hasta que lleguen los 4
-        if res.is_leader() {                     // exactamente uno es "líder"
-            println!("líder de la ronda (p. ej. loguear una vez)");
-        }
-        // fase 2: todos arrancan juntos (la barrera se puede reusar)
-            }));
-        }
-        for h in hs { h.join().unwrap(); }</code></pre>
-
-          <h4>Cuándo NO conviene</h4>
-          <p>En tareas con <strong>latencias muy variables e impredecibles</strong> (llamadas a APIs externas, I/O de red), usar barreras es mala idea porque obliga a esperar al más lento sin necesidad conceptual real. Ahí conviene un modelo <strong>async/reactivo</strong>, donde cada tarea avanza cuando está lista, sin forzar sincronización global.</p>
-
-          <div class="callout warning">
-            <strong>Matiz para no perder puntos:</strong> no confundir el «líder» de una barrera con el líder de los algoritmos distribuidos (Bully, Ring). El líder de la barrera se <em>redetermina en cada ciclo</em> (es el último en llegar a esa ronda) y no tiene ninguna responsabilidad más allá de la etiqueta. El líder distribuido tiene rol activo y persistente (coordina, mantiene estado, se reelige si cae). Son conceptos distintos aunque compartan nombre.
-          </div>
-
-          <p><a href="#semaforos">§12</a></p>
+          <p>Coordina a un conjunto de <em>N</em> procesos/threads obligándolos a <strong>esperar en un punto</strong> hasta que <strong>todos</strong> lleguen. Tiene esencialmente <strong>una sola operación</strong>, <code>wait()</code>: el que llega se bloquea, y cuando llega el <strong>último</strong> se liberan todos y siguen. En Rust (<code>std::sync::Barrier</code>) es <strong>reutilizable</strong>: después de liberar a todos se reinicia para la ronda siguiente.</p>
+          <p>Su uso clásico es <strong>sincronizar por fases</strong>: que todos terminen una etapa antes de que cualquiera empiece la siguiente. Requiere que el trabajo se divida en rondas bien definidas, donde una fase depende de que la anterior la hayan completado todas las subtareas — simulaciones por pasos de tiempo, multiplicación de matrices por bloques, o el <strong>problema del banquero</strong> de la cátedra (una barrera para «todos listos para empezar la semana» antes de repartir, otra para «todos calcularon su parte» antes de permitir retiros).</p>
+          <p><code>wait()</code> devuelve un <code>BarrierWaitResult</code> cuyo <code>is_leader()</code> da <code>true</code> <strong>solo para el último hilo que llegó</strong>. Tiene sentido: ese es el único que, al llegar, ya sabe que la condición de desbloqueo se cumplió, porque la completa su propia llegada. Sirve para que exactamente un hilo haga algo puntual después de la sincronización (loguear, consolidar el resultado) sin sincronización extra.</p>
+          <pre class="code" data-lang="rust"><code>let barrier = Arc::new(Barrier::new(n));
+        // ... en cada thread:
+        let res = barrier.wait();      // bloquea hasta que lleguen los n
+        if res.is_leader() {           // exactamente uno: el último en llegar
+            consolidar_resultado();
+        }</code></pre>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> no confundir el «líder» de una barrera con el de los algoritmos distribuidos (Bully, Ring). El de la barrera se <strong>redetermina en cada ciclo</strong> y no tiene ninguna responsabilidad más allá de la etiqueta; el líder distribuido tiene un rol activo y persistente (coordina, mantiene estado, se reelige si cae). Ver <a href="#semaforos">§12</a>.</div>
         </details>
         <details>
           <summary>¿Qué es un monitor? Operaciones y de qué se compone</summary>
+          <p>Herramienta de sincronización que <strong>encapsula estado + procedimientos + exclusión mutua</strong>. Lo central: solo <strong>un proceso ejecuta dentro del monitor a la vez</strong>, y esa exclusión mutua es <strong>implícita</strong> — la da la estructura, el programador no la escribe.</p>
 
-          <p>Un <strong>monitor</strong> es una herramienta de sincronización que <strong>encapsula datos + procedimientos + exclusión mutua implícita</strong>. Su característica central: solo un proceso ejecuta un procedimiento del monitor a la vez (la exclusión mutua es <strong>responsabilidad de la estructura</strong>, no del programador — no hay que escribir código de locks).</p>
-
-          <h4>Componentes de un monitor</h4>
-          <p>Siempre están estos elementos (todos obligatorios):</p>
+          <p><strong>De qué se compone:</strong></p>
           <ul class="study-list">
-            <li><strong>Nombre</strong> del monitor (ej. <code>Buffer</code>, <code>Impresora</code>).</li>
-            <li><strong>Variables internas protegidas</strong>: el estado compartido que el monitor cuida (ej. el contenido del buffer, el número de ítems, si está lleno).</li>
-            <li><strong>Procedimientos públicos</strong>: interfaz del monitor, los métodos que otros procesos llaman. Cada uno es una entrada "guardada" — solo uno ejecuta a la vez. Ej. <code>insertar()</code>, <code>extraer()</code>.</li>
-            <li><strong>Variables de condición</strong> (condvars): <strong>no guardan valor</strong>, solo mantienen un <strong>FIFO de procesos bloqueados</strong>. Ej. <code>notEmpty</code>, <code>notFull</code>.</li>
-            <li><strong>Inicialización</strong>: estado inicial de las variables internas.</li>
+            <li><strong>Nombre</strong> del monitor.</li>
+            <li><strong>Variables internas:</strong> el estado compartido que protege.</li>
+            <li><strong>Procedimientos</strong> que acceden a ese estado, y cuáles de ellos son la <strong>interfaz pública</strong>.</li>
+            <li><strong>Inicialización</strong> de las variables internas.</li>
+            <li><strong>Variables de condición:</strong> no guardan ningún valor, solo mantienen una <strong>cola FIFO</strong> de procesos bloqueados.</li>
           </ul>
 
-          <h4>Operaciones atómicas sobre variables de condición</h4>
+          <p><strong>Operaciones (atómicas) sobre las variables de condición:</strong></p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Operación</th><th>Semántica</th></tr></thead>
+              <thead><tr><th>Operación</th><th>Qué hace</th></tr></thead>
               <tbody>
-        <tr><td><code>waitC(cond)</code></td><td><strong>SIEMPRE bloquea</strong> al proceso, lo agrega al FIFO de la condición y <strong>libera el lock del monitor</strong> (otro puede entrar).</td></tr>
-        <tr><td><code>signalC(cond)</code></td><td>Despierta al proceso del <strong>tope del FIFO</strong> de la condición; si la cola está vacía, <strong>no hace nada</strong>.</td></tr>
-        <tr><td><code>empty(cond)</code></td><td>Devuelve <code>true</code> si el FIFO de la condición está vacío.</td></tr>
+        <tr><td><code>waitC(cond)</code></td><td><strong>Siempre bloquea:</strong> agrega el proceso al FIFO de esa condición y <strong>libera el lock del monitor</strong> para que otro pueda entrar. No evalúa nada.</td></tr>
+        <tr><td><code>signalC(cond)</code></td><td>Despierta al del <strong>tope del FIFO</strong>. Si la cola está vacía <strong>no hace nada</strong> (la señal se pierde).</td></tr>
+        <tr><td><code>empty(cond)</code></td><td><code>true</code> si no hay nadie esperando en esa condición.</td></tr>
               </tbody>
             </table>
           </div>
 
-          <h4>Ejemplo: buffer acotado (estructura completa)</h4>
-          <pre class="code" data-lang="rust"><code>// MONITOR Buffer
-        // Componentes: nombre (Buffer), variables internas (items, size, in_idx, out_idx),
-        //              procedimientos públicos (insert, extract), condvars (notFull, notEmpty),
-        //              inicialización
+          <p><code>waitC</code> siempre bloquea porque la variable de condición <strong>no tiene información propia</strong> para decidir (a diferencia del semáforo, que evalúa su contador). La condición real la evalúa el código del monitor en un <code>while</code> <em>antes</em> de llamarla:</p>
 
-        struct Buffer {
-            // Variables internas (protegidas por la exclusión mutua del monitor)
-            items: Vec&lt;i32&gt;,
-            size: usize,
-            in_idx: usize,
-            out_idx: usize,
-            count: usize,  // cuántos elementos hay ahora
-        }
+          <pre class="code" data-lang="rust"><code>monitor Buffer {
+            items: Vec&lt;i32&gt;, count: usize, size: usize   // variables internas
+            notFull: Condition, notEmpty: Condition      // variables de condición
 
-        struct MonitorBuffer {
-            // En Rust, Mutex&lt;Buffer&gt; implementa la exclusión mutua implícita
-            data: Mutex&lt;Buffer&gt;,
-            // Variables de condición (cada una es un FIFO separado)
-            not_full: Condvar,   // esperar a que NO esté lleno
-            not_empty: Condvar,  // esperar a que NO esté vacío
-        }
-
-        impl MonitorBuffer {
-            // INICIALIZACIÓN
-            fn new(size: usize) -&gt; Self {
-        MonitorBuffer {
-            data: Mutex::new(Buffer {
-                items: vec![0; size],
-                size,
-                in_idx: 0,
-                out_idx: 0,
-                count: 0,
-            }),
-            not_full: Condvar::new(),
-            not_empty: Condvar::new(),
-        }
+            procedure insert(x) {                        // procedimiento público
+        while count == size { waitC(notFull) }   // while, NUNCA if
+        items.push(x); count += 1
+        signalC(notEmpty)
             }
-
-            // PROCEDIMIENTO 1: insertar
-            fn insert(&amp;self, x: i32) {
-        let mut buf = self.data.lock().unwrap();  // AQUÍ entra con exclusión mutua
-
-        // Evaluamos la condición ANTES de esperar, en un WHILE (no if)
-        // por spurious wakeup (el monitor puede despertarte sin causa)
-        while buf.count == buf.size {              // mientras esté lleno
-            buf = self.not_full.wait(buf).unwrap(); // waitC: bloquea y libera el lock
-        }
-
-        // Ahora hay espacio: insertamos
-        buf.items[buf.in_idx] = x;
-        buf.in_idx = (buf.in_idx + 1) % buf.size;
-        buf.count += 1;
-
-        // Despertamos a quien espere por NOT_EMPTY
-        self.not_empty.notify_one();  // signalC: despierta al tope del FIFO de not_empty
-            }  // FIN procedimiento: lock se libera automáticamente
-
-            // PROCEDIMIENTO 2: extraer
-            fn extract(&amp;self) -&gt; i32 {
-        let mut buf = self.data.lock().unwrap();  // AQUÍ entra con exclusión mutua
-
-        while buf.count == 0 {                     // mientras esté vacío
-            buf = self.not_empty.wait(buf).unwrap(); // waitC: bloquea y libera el lock
-        }
-
-        // Ahora hay elementos: extraemos
-        let x = buf.items[buf.out_idx];
-        buf.out_idx = (buf.out_idx + 1) % buf.size;
-        buf.count -= 1;
-
-        self.not_full.notify_one();  // signalC: despierta a quien espere NOT_FULL
-
-        x
-            }  // FIN procedimiento: lock se libera automáticamente
+            procedure extract() -&gt; i32 {
+        while count == 0 { waitC(notEmpty) }
+        count -= 1; let x = items.pop()
+        signalC(notFull); return x
+            }
         }</code></pre>
 
-          <h4>Contraste: Semáforo vs Monitor</h4>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Aspecto</th><th>Semáforo</th><th>Monitor</th></tr></thead>
-              <tbody>
-        <tr><td><code>wait</code> / <code>waitC</code></td><td>Puede o no bloquear (evalúa <code>V > 0</code>)</td><td><strong>SIEMPRE bloquea</strong></td></tr>
-        <tr><td><code>signal</code> / <code>signalC</code></td><td>Siempre tiene efecto (suma o despierta)</td><td>Sin efecto si el FIFO está vacío</td></tr>
-        <tr><td>Valor propio</td><td>Sí (contador <code>V</code>)</td><td>No (solo el FIFO)</td></tr>
-        <tr><td>Encapsulación</td><td>No (el programador maneja el protocolo)</td><td>Sí (datos + procedimientos + sincronización juntos)</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <p>Tener <strong>más de una</strong> variable de condición sirve para separar las colas por <em>motivo lógico</em>: el productor espera por «no lleno» y el consumidor por «no vacío». Con una sola cola, un <code>signalC</code> podría despertar a otro consumidor que sigue sin poder avanzar.</p>
 
-          <div class="callout warning">
-            <strong>Matiz para no perder puntos (la penalización del docente):</strong> No alcanza decir «un monitor usa Mutex + Condvar con wait/signal». La respuesta <strong>completa</strong> tiene que enumerar:
-            <ul class="study-list">
-              <li>El <strong>nombre</strong> y <strong>variables internas</strong> (el estado).</li>
-              <li><strong>Todos los procedimientos</strong> que acceden a ese estado (la interfaz pública).</li>
-              <li>Las <strong>variables de condición</strong> y cómo se usan (qué FIFO, cuándo se espera).</li>
-              <li>La <strong>inicialización</strong>.</li>
-              <li><strong>LA CLAVE:</strong> la exclusión mutua es <strong>implícita</strong> — la da la estructura del monitor, solo un proceso adentro a la vez. El programador no la escribe.</li>
-            </ul>
-            Además: <code>waitC</code> <strong>SIEMPRE bloquea</strong> (a diferencia del semáforo); por eso la condición se evalúa en un <code>while</code>, no en un <code>if</code>.
-          </div>
-
-          <p>Ver <a href="#semaforos">§12</a>.</p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> el docente penalizó como <em>incompleta</em> la respuesta «un monitor se implementa con un Mutex y una Condvar, y tiene <code>wait</code> y <code>signal</code>», con la marca «<em>y todos sus procedimientos</em>». Si te piden el monitor, describilo <strong>entero</strong>: variables internas, <strong>todos</strong> los procedimientos que exponen y protegen el estado, inicialización, variables de condición, y que la <strong>exclusión mutua es implícita</strong>. Ver <a href="#semaforos">§12</a>.</div>
         </details>
         <details>
           <summary>Semáforo vs Monitor: similitudes, diferencias y cuándo usar cada uno</summary>
+          <p>El <strong>semáforo</strong> es un contador entero no negativo con dos operaciones atómicas (<code>wait</code>/<code>signal</code>) y una cola de bloqueados. El <strong>monitor</strong> encapsula estado + procedimientos con <strong>exclusión mutua implícita</strong> (un solo proceso adentro a la vez) y usa <strong>variables de condición</strong> (FIFO de espera, sin valor propio).</p>
 
-          <p><strong>Definición breve:</strong> un <strong>semáforo</strong> es un contador entero no negativo con dos operaciones atómicas (<code>wait</code>/<code>signal</code>) que actúa como guarda de acceso a recursos; un <strong>monitor</strong> es una estructura que combina <strong>exclusión mutua implícita</strong> (solo un proceso ejecuta un procedimiento a la vez) con <strong>variables de condición</strong> (FIFO de espera sin valor propio) para sincronizar acceso a estado protegido.</p>
+          <p><strong>Similitudes:</strong> los dos serializan el acceso a recursos compartidos, los dos bloquean de forma <em>pasiva</em> (nada de busy-wait), sus operaciones son atómicas, y cada uno se puede construir con el otro (un semáforo se implementa como monitor con <code>Mutex&lt;i32&gt; + Condvar</code>).</p>
 
-          <h4>Tabla comparativa: operaciones wait/signal vs waitC/signalC</h4>
+          <p><strong>Diferencias en la semántica de las operaciones:</strong></p>
           <div class="table-wrap">
             <table>
-              <thead>
-        <tr>
-          <th>Aspecto</th>
-          <th>Semáforo (<code>wait</code>/<code>signal</code>)</th>
-          <th>Monitor (<code>waitC</code>/<code>signalC</code>)</th>
-        </tr>
-              </thead>
+              <thead><tr><th></th><th>Semáforo (<code>wait</code>/<code>signal</code>)</th><th>Monitor (<code>waitC</code>/<code>signalC</code>)</th></tr></thead>
               <tbody>
-        <tr>
-          <td>¿<code>wait</code> bloquea?</td>
-          <td>Puede o no (si <code>V &gt; 0</code> no bloquea, decrementa y sigue)</td>
-          <td><code>waitC</code> <strong>siempre</strong> bloquea y libera el monitor</td>
-        </tr>
-        <tr>
-          <td>¿<code>signal</code> tiene efecto?</td>
-          <td><code>signal</code> <strong>siempre</strong> tiene efecto: incrementa o despierta un proceso</td>
-          <td><code>signalC</code> <strong>no</strong> tiene efecto si la cola está vacía</td>
-        </tr>
-        <tr>
-          <td>¿A quién despierta?</td>
-          <td>Un proceso <em>arbitrario</em> de los bloqueados (sin orden)</td>
-          <td>El del <strong>tope del FIFO</strong> (orden de llegada)</td>
-        </tr>
-        <tr>
-          <td>Tras la señal</td>
-          <td>El desbloqueado puede continuar inmediatamente</td>
-          <td>El desbloqueado <strong>espera</strong> a que el señalizador deje el monitor</td>
-        </tr>
+        <tr><td>¿El <code>wait</code> bloquea?</td><td>Puede o no: si <code>V &gt; 0</code> decrementa y sigue</td><td><code>waitC</code> <strong>siempre</strong> bloquea y libera el monitor</td></tr>
+        <tr><td>¿El <code>signal</code> tiene efecto?</td><td><strong>Siempre</strong>: incrementa o despierta a alguien</td><td><code>signalC</code> <strong>no hace nada</strong> si la cola está vacía (la señal se pierde)</td></tr>
+        <tr><td>¿A quién despierta?</td><td>A uno <em>arbitrario</em> de los bloqueados</td><td>Al del <strong>tope del FIFO</strong></td></tr>
+        <tr><td>Tras la señal</td><td>El desbloqueado puede continuar inmediatamente</td><td>El desbloqueado espera a que el señalizador <strong>deje el monitor</strong></td></tr>
               </tbody>
             </table>
           </div>
 
-          <h4>Diferencia fundamental: exclusión mutua explícita vs implícita</h4>
+          <p><strong>Diferencias de fondo:</strong></p>
           <ul class="study-list">
-            <li><strong>Semáforo:</strong> el programador debe colocar <code>wait</code>/<code>signal</code> en el orden correcto. La garantía de exclusión mutua es <em>responsabilidad del código</em>. Si se olvida un <code>signal</code> o se invierten las operaciones, se pierde la protección.</li>
-            <li><strong>Monitor:</strong> la exclusión mutua está <em>incorporada en la estructura</em>. El compilador/runtime impone que solo un proceso ejecute un procedimiento del monitor a la vez. El programador no puede olvidarlo.</li>
+            <li><strong>Exclusión mutua explícita vs implícita:</strong> con semáforos la pone el programador, escribiendo <code>wait</code>/<code>signal</code> en el orden correcto; en el monitor la da la estructura y no se puede omitir.</li>
+            <li><strong>Estado asociado:</strong> el semáforo es un contador abstracto <em>sin</em> datos protegidos (el buffer se protege aparte, con otro mutex); el monitor <strong>encapsula</strong> las variables internas junto con los procedimientos que las tocan, así que no hay forma de acceder al estado sin pasar por el protocolo.</li>
+            <li><strong>Qué error habilita cada uno:</strong> con semáforos, olvidarse un <code>signal</code> → deadlock, e invertir <code>wait</code>/<code>signal</code> → se pierde la exclusión mutua. En el monitor esos errores no son expresables; el error típico es equivocar la condición del <code>while</code> de la variable de condición (y usar <code>if</code> en vez de <code>while</code>).</li>
           </ul>
 
-          <h4>Diferencia: estado asociado y encapsulación</h4>
-          <ul class="study-list">
-            <li><strong>Semáforo:</strong> es un <em>contador</em> abstracto sin estado protegido asociado. Representa "cantidad de recursos disponibles" pero no qué datos hay detrás; el programador debe manejar por separado buffers, flags, etc., (típicamente con un mutex adicional). El semáforo y los datos protegidos viven en lugares distintos.</li>
-            <li><strong>Monitor:</strong> <em>encapsula</em> juntos las variables internas protegidas y los procedimientos que las acceden. La estructura une el estado con su protocolo de acceso. Esto reduce errores: no se puede acceder a los datos sin pasar por los procedimientos del monitor.</li>
-          </ul>
+          <p><strong>Cuándo usar cada uno:</strong> <strong>monitor</strong> si el recurso es complejo y tiene varias condiciones de sincronización (buffer acotado con <code>notFull</code>/<code>notEmpty</code>, cola de impresión); <strong>semáforo</strong> si solo hay que contar accesos a N recursos idénticos (N impresoras, conexiones de BD, lugares de estacionamiento).</p>
 
-          <h4>Diferencia: qué errores habilita cada uno</h4>
-          <ul class="study-list">
-            <li><strong>Semáforo:</strong>
-              <ul class="study-list">
-        <li>Olvidarse un <code>signal</code> → procesos quedan bloqueados para siempre (deadlock).</li>
-        <li>Invertir el orden <code>wait</code>/<code>signal</code> o usarlos en la sección equivocada → se pierden garantías de exclusión mutua (race condition).</li>
-        <li>No elegir bien los valores iniciales de los semáforos → comportamiento incorrecto desde el inicio.</li>
-              </ul>
-            </li>
-            <li><strong>Monitor:</strong>
-              <ul class="study-list">
-        <li>Esos tres errores arriba <strong>no son expresables</strong>: no se puede olvidar un <code>signalC</code> o invertir el orden porque la sintaxis del monitor lo evita.</li>
-        <li>El error típico es la condición del <code>while</code> en la variable de condición: si la condición es incorrecta, el monitor espera/despierta en momentos equivocados. Por eso la regla es <strong>siempre <code>while</code>, nunca <code>if</code></strong> (evita spurious wakeup).</li>
-              </ul>
-            </li>
-          </ul>
-
-          <h4>Similitudes</h4>
-          <ul class="study-list">
-            <li>Ambos <strong>evitan busy-wait</strong>: el proceso se bloquea pasivamente y el SO no le cede CPU hasta que se cumpla la condición.</li>
-            <li>Ambos <strong>serializan acceso a recursos compartidos</strong>: garantizan que, en un momento dado, solo un proceso (o grupo controlado) toca los datos.</li>
-            <li>Ambos tienen <strong>garantías atomicidad</strong> de sus operaciones: es imposible que dos procesos ejecuten wait/signal simultáneamente.</li>
-            <li><strong>Implementabilidad mutua:</strong> un semáforo se puede construir como monitor (con <code>Mutex&lt;i32&gt; + Condvar</code>), y un monitor se puede emular con semáforos (aunque más laboriosamente).</li>
-          </ul>
-
-          <h4>Cuándo usar cada uno</h4>
-          <ul class="study-list">
-            <li><strong>Monitor:</strong> cuando el recurso es <em>complejo</em> con <strong>múltiples condiciones de sincronización</strong> (ej.: cola de impresión con <code>notFull</code>/<code>notEmpty</code>, buffer de datos con estados internos, servidor con clientes que esperan turnos). La encapsulación del estado protege contra errores.</li>
-            <li><strong>Semáforo:</strong> cuando solo hay que <strong>contar accesos a N recursos idénticos</strong> (ej.: N impresoras, M conexiones de BD, K lugares de estacionamiento). El código es simple: <code>acquire</code> antes de entrar, <code>release</code> después; no hay estado complicado. También en <em>productor-consumidor infinito</em> con un solo semáforo <code>notEmpty</code>.</li>
-          </ul>
-
-          <div class="callout warning">
-            <strong>Para no perder puntos en examen:</strong> responder solo dos o tres diferencias sueltas ("los semáforos no tienen recurso asociado", "el contador puede ser mayor que uno") se califica <strong>REGULAR</strong>. Una comparación completa tiene que:
-            <ul class="study-list">
-              <li>Definir cada estructura (no asumir que el lector sabe qué es).</li>
-              <li>Comparar por <strong>ejes sistemáticos</strong>: expresividad, quién garantiza la exclusión, semántica de operaciones, riesgo de error, encapsulación.</li>
-              <li>Incluir la <strong>tabla de 4 filas</strong> sobre wait/signal vs waitC/signalC.</li>
-              <li>Mencionar similitudes (justifican que el otro no sea suficiente).</li>
-              <li>Cerrar con cuándo/dónde usar cada uno (no son intercambiables).</li>
-            </ul>
-          </div>
-
-          <p><a href="#semaforos">§12</a></p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> contestar dos o tres diferencias sueltas («el semáforo no tiene un recurso asociado», «su contador puede ser mayor que uno») se califica <strong>Regular</strong>. Hay que <em>definir cada estructura</em> y recién ahí comparar por ejes: semántica de las operaciones, quién garantiza la exclusión mutua, encapsulación del estado y riesgo de error. Ver <a href="#semaforos">§12</a>.</div>
         </details>
         <details>
           <summary>Productor-consumidor con semáforos</summary>
-
-          <h4>Esqueleto (Ben-Ari, 1 productor y 1 consumidor)</h4>
-          <p>La solución clásica usa <strong>dos semáforos de conteo</strong>: <code>notFull</code> (contador de espacios libres en el buffer) inicializado en <code>N</code> (capacidad), y <code>notEmpty</code> (contador de ítems disponibles) inicializado en <code>0</code>.</p>
-
-          <pre class="code" data-lang="rust"><code>let not_full  = Semaphore::new(N);     // huecos libres (capacidad del buffer)
-        let not_empty = Semaphore::new(0);    // ítems disponibles
+          <p>Dos semáforos de conteo: <code>notFull</code> (espacios libres) inicializado en <strong>N</strong>, la capacidad del buffer, y <code>notEmpty</code> (ítems disponibles) inicializado en <strong>0</strong>.</p>
+          <pre class="code" data-lang="rust"><code>let not_full  = Semaphore::new(N);     // huecos libres
+        let not_empty = Semaphore::new(0);     // ítems disponibles
         let buffer    = Mutex::new(VecDeque::new());
 
         // Productor
         loop {
             let item = producir();
             not_full.acquire();                        // espera si el buffer está lleno
-            buffer.lock().unwrap().push_back(item);    // acceso exclusivo al buffer
-            not_empty.release();                       // avisa: hay un ítem disponible
+            buffer.lock().unwrap().push_back(item);
+            not_empty.release();                       // avisa: hay un ítem
         }
 
         // Consumidor
@@ -3995,90 +3527,33 @@ handle.join().unwrap();</code></pre>
             not_full.release();                        // avisa: se liberó un espacio
             consumir(item);
         }</code></pre>
-
-          <h4>Sincronización vs Exclusión Mutua: la distinción crítica</h4>
-          <p>Los semáforos <code>notFull</code> y <code>notEmpty</code> resuelven la <strong>sincronización productor↔consumidor</strong>: coordinan cuándo producir (hay espacio) y cuándo consumir (hay elementos). <strong>Pero no garantizan exclusión mutua dentro de cada familia.</strong></p>
-
+          <p>Los semáforos son la herramienta natural acá porque el que hace <code>wait</code> y el que hace el <code>signal</code> que lo despierta son <strong>hilos distintos</strong>: el consumidor libera el espacio que destraba al productor. Un mutex no modela eso, porque solo lo libera quien lo tomó.</p>
+          <p><strong>Los dos semáforos resuelven la sincronización productor↔consumidor, pero no la exclusión mutua dentro de cada familia:</strong></p>
           <ul class="study-list">
-            <li><strong>Con 1 productor y 1 consumidor:</strong> el mutex del buffer es innecesario. No hay competencia: el productor siempre opera sobre una posición que el consumidor nunca toca, y viceversa. Es la solución de Ben-Ari: dos semáforos bastan.</li>
-            <li><strong>Con múltiples productores y/o consumidores:</strong> se agrega un <code>mutex</code> (o semáforo binario) que envuelve específicamente el acceso al buffer — es decir, el <code>push</code>/<code>pop</code> físico. Sin él, dos productores podrían escribir simultáneamente, o dos consumidores podrían leer la misma posición → race condition.</li>
+            <li><strong>1 productor y 1 consumidor:</strong> el mutex del buffer no hace falta. Es la solución clásica de Ben-Ari con dos semáforos: nunca compiten por la misma posición.</li>
+            <li><strong>Varios productores y/o consumidores:</strong> sí hace falta un mutex (o semáforo binario) envolviendo el acceso físico al buffer, para que dos productores —o dos consumidores— no se pisen entre sí.</li>
           </ul>
-
-          <p><strong>Resumen:</strong> semáforo de conteo → coordinación (¿hay espacio? ¿hay elementos?); mutex → exclusión mutua (protege la estructura compartida). Con varios productores y/o consumidores se necesitan <em>ambas</em>.</p>
-
-          <h4>Por qué el semáforo es la herramienta natural</h4>
-          <p>El semáforo modela naturalmente esta situación porque el que hace <code>wait(notFull)</code> es <em>un hilo distinto</em> del que hace <code>signal(notFull)</code>: es el consumidor quien retorna espacio para que el productor continúe. Un mutex no sirve para esto (solo lo libera quien lo tomó); la variable de condición tampoco es la primera opción porque aquí no se "espera por una condición que el mismo proceso chequea", sino que se espera que <em>otro</em> proceso haga trabajo que genere la condición.</p>
-
-          <div class="callout warning"><strong>Error clásico de parcial:</strong> tomar el <code>mutex</code> del buffer <em>antes</em> de hacer <code>wait(not_full)</code>. Así: <code>buffer.lock(); not_full.acquire();</code> → el hilo se bloquea esperando espacio <em>teniendo el buffer tomado</em> → el otro hilo no puede ni siquiera hacer <code>pop</code> para liberar espacio → deadlock. <strong>Siempre: semáforo primero, mutex después.</strong></div>
-
-          <h4>Matiz: buffer acotado vs infinito</h4>
-          <p>Un <strong>buffer acotado</strong> (con capacidad N) exige <em>dos</em> semáforos. Si se omite <code>notFull</code> y se deja solo <code>notEmpty</code>, lo que está modelado es en realidad un <strong>buffer infinito</strong> — nunca se pregunta "¿hay espacio?", así que el buffer crece sin límite. Ese es el error que comete un código que solo usa <code>wait(notEmpty)</code> en el consumidor y <code>signal(notEmpty)</code> en el productor: resuelve sincronización de consumo, pero no acota el tamaño.</p>
-
-          <p><strong>Referencia:</strong> <a href="#clasicos">§13</a></p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> el <code>wait</code> del semáforo va <strong>primero</strong> y el lock del buffer <strong>después</strong>. Al revés (<code>buffer.lock()</code> y recién ahí <code>not_full.acquire()</code>) el hilo se bloquea esperando espacio <em>con el buffer tomado</em>, el otro no puede sacar nada para liberarlo, y es <strong>deadlock</strong>. Y ojo con el buffer: si se omite <code>notFull</code> y queda solo <code>notEmpty</code>, lo que modelaste es un buffer <strong>infinito</strong> — nunca preguntás si hay espacio. Ver <a href="#clasicos">§13</a>.</div>
         </details>
         <details>
           <summary>Locks en Unix vs Rust, tipos y «lock envenenado»</summary>
-          <p>Un <strong>lock</strong> (cerradura) implementa <strong>exclusión mutua</strong>: una variable de estado con dos operaciones, <code>lock()</code> (el proceso se bloquea hasta poder tomarlo) y <code>unlock()</code> (lo libera). No se puede construir en software puro: requiere <strong>soporte de hardware y del sistema operativo</strong>, típicamente una instrucción atómica del tipo <em>test-and-set</em>, porque el «fijarse si está libre y tomarlo» tiene que ser un único paso indivisible.</p>
-
-          <p><strong>Los dos tipos son los mismos en los dos mundos:</strong></p>
-          <ul class="study-list">
-            <li><strong>Compartido / <em>shared</em> (lectura):</strong> varios procesos o threads pueden tenerlo <em>simultáneamente</em>. Sirve porque leer no rompe invariantes.</li>
-            <li><strong>Exclusivo / <em>exclusive</em> (escritura):</strong> uno solo a la vez, y bloquea a todos los demás (lectores incluidos).</li>
-          </ul>
-          <p>La regla de compatibilidad: para tomar un <em>shared</em> hay que esperar a que se liberen todos los <em>exclusive</em>; para tomar un <em>exclusive</em>, que se liberen <strong>todos</strong>, de los dos tipos.</p>
-
-          <h4>Locks en Unix</h4>
-          <ul class="study-list">
-            <li>Son locks <strong>sobre archivos</strong>, entre <strong>procesos</strong> (no entre threads de un mismo proceso).</li>
-            <li>Son <strong>advisory</strong> (consultivos): el kernel <em>no</em> los impone. Funcionan solo si <strong>todos los procesos cooperan</strong> y los consultan antes de tocar el recurso; uno que los ignore escribe el archivo igual.</li>
-            <li>Se aplican abriendo el archivo y usando <code>fcntl()</code>, <code>flock()</code> o <code>lockf()</code>. <code>fcntl</code> permite lockear <strong>rangos de bytes</strong> (un registro de tamaño fijo) sin bloquear el resto del archivo; <code>flock</code>/<code>lockf</code> son más simples pero no tienen rangos.</li>
-          </ul>
-
-          <h4>Locks en Rust (<code>std::sync</code>)</h4>
-          <ul class="study-list">
-            <li><code>Mutex&lt;T&gt;</code>: el caso exclusivo puro (equivale a un lock de escritura, o a un semáforo binario).</li>
-            <li><code>RwLock&lt;T&gt;</code>: <code>read()</code> bloquea hasta obtener lock de lectura (puede haber otros lectores a la vez); <code>write()</code> bloquea hasta obtener el exclusivo (no puede haber ningún otro lock). La política concreta de prioridad la define el SO.</li>
-            <li>El lock <strong>envuelve el dato</strong> (<code>Mutex&lt;T&gt;</code>, no un mutex al lado de la variable): <em>no hay forma de acceder al dato sin tomar el lock</em>. Ahí está la diferencia de fondo con Unix.</li>
-            <li>Los traits <code>Send</code>/<code>Sync</code> validan en <strong>tiempo de compilación</strong> qué se puede mover o compartir entre hilos: para compartir <code>T</code> tiene que ser <code>Send</code>, y para permitir lectores concurrentes, <code>Sync</code>.</li>
-            <li><strong>RAII</strong>: <code>lock()</code>/<code>read()</code>/<code>write()</code> devuelven un <em>guard</em> que libera el lock solo al salir de scope (trait <code>Drop</code>), o antes con <code>drop()</code> explícito. No existe el bug de «me olvidé el <code>unlock()</code>».</li>
-            <li>El patrón para mutar estado compartido entre hilos es <code>Arc&lt;Mutex&lt;T&gt;&gt;</code>: <code>Arc</code> comparte, <code>Mutex</code> serializa.</li>
-          </ul>
-
-          <pre class="code" data-lang="rust"><code>use std::sync::RwLock;
-        let datos = RwLock::new(vec![1, 2, 3]);
-        {
-            let r1 = datos.read().unwrap();     // varios lectores a la vez
-            let r2 = datos.read().unwrap();
-            println!("{} {}", r1.len(), r2.len());
-        }                                       // se liberan los guards de lectura (Drop)
-        {
-            let mut w = datos.write().unwrap(); // acceso exclusivo: ningún otro lock vivo
-            w.push(4);
-        }                                       // se libera el guard de escritura</code></pre>
-
+          <p>Un <strong>lock</strong> implementa exclusión mutua con dos operaciones: <code>lock()</code> (el proceso se bloquea hasta poder obtenerlo) y <code>unlock()</code> (lo libera). Requiere soporte de hardware y del SO — instrucciones atómicas tipo <em>test-and-set</em>.</p>
+          <p><strong>Los dos tipos</strong> son los mismos en ambos mundos: <strong>compartido</strong> (lectura, varios a la vez) y <strong>exclusivo</strong> (escritura, uno solo, bloquea a todos). Para tomar un compartido hay que esperar a que se liberen los exclusivos; para tomar un exclusivo, que se liberen <em>todos</em>, de los dos tipos.</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th></th><th>Locks de Unix</th><th>Locks de Rust</th></tr></thead>
+              <thead><tr><th></th><th>Locks de Unix</th><th>Locks de Rust (<code>std::sync</code>)</th></tr></thead>
               <tbody>
-        <tr><td><strong>Alcance</strong></td><td>Entre <strong>procesos</strong> (incluso sin parentesco)</td><td>Entre <strong>threads</strong> del mismo proceso</td></tr>
-        <tr><td><strong>Qué protege</strong></td><td>Un archivo o un rango de bytes</td><td>El dato, que vive <em>adentro</em> del lock</td></tr>
-        <tr><td><strong>Cómo se impone</strong></td><td><strong>Advisory</strong>: cooperativo, se puede ignorar</td><td><strong>Estructural</strong>: el compilador no te deja saltearlo</td></tr>
-        <tr><td><strong>Validación</strong></td><td>En ejecución, y solo si todos cooperan</td><td>En <strong>compilación</strong> (<code>Send</code>/<code>Sync</code>, ownership)</td></tr>
-        <tr><td><strong>Liberación</strong></td><td>Explícita (o al cerrar el archivo / terminar el proceso)</td><td><strong>RAII</strong>: el guard libera solo al salir de scope</td></tr>
-        <tr><td><strong>Tipos</strong></td><td><code>shared</code> / <code>exclusive</code></td><td><code>RwLock</code> (read/write) / <code>Mutex</code> (solo exclusivo)</td></tr>
+        <tr><td><strong>Alcance</strong></td><td>Entre <strong>procesos</strong>, sobre archivos (o rangos de bytes)</td><td>Entre <strong>threads</strong> del mismo proceso</td></tr>
+        <tr><td><strong>Cómo se impone</strong></td><td><strong>Advisory</strong> (consultivo): el kernel no lo fuerza; funciona solo si todos los procesos cooperan y lo consultan</td><td><strong>Estructural</strong>: el lock <em>envuelve el dato</em> (<code>Mutex&lt;T&gt;</code>), no hay forma de acceder sin tomarlo</td></tr>
+        <tr><td><strong>Tipos</strong></td><td><code>shared</code> / <code>exclusive</code></td><td><code>RwLock&lt;T&gt;</code> (<code>read</code>/<code>write</code>) y <code>Mutex&lt;T&gt;</code> (solo exclusivo)</td></tr>
+        <tr><td><strong>Cómo se usan</strong></td><td>Abriendo el archivo y llamando a <code>fcntl()</code>, <code>flock()</code> o <code>lockf()</code></td><td><code>.lock()</code> / <code>.read()</code> / <code>.write()</code>, típicamente sobre <code>Arc&lt;Mutex&lt;T&gt;&gt;</code></td></tr>
+        <tr><td><strong>Liberación</strong></td><td>Explícita</td><td><strong>RAII</strong>: el <em>guard</em> libera solo al salir de scope; no existe el bug de «me olvidé el <code>unlock</code>»</td></tr>
+        <tr><td><strong>Validación</strong></td><td>En ejecución, y solo si todos cooperan</td><td>En <strong>compilación</strong>, vía los traits <code>Send</code> y <code>Sync</code></td></tr>
               </tbody>
             </table>
           </div>
-
-          <h4>Lock envenenado (<em>poisoned</em>)</h4>
-          <p>Si un thread hace <code>panic!</code> <strong>mientras tiene el lock tomado</strong>, el dato protegido puede haber quedado a mitad de una modificación, o sea en un estado <strong>inconsistente</strong>. Rust marca ese lock como <strong>envenenado</strong> y todas las llamadas posteriores a <code>lock()</code>/<code>read()</code>/<code>write()</code> devuelven <code>Err(PoisonError)</code> en vez de entregar datos posiblemente corruptos.</p>
-          <ul class="study-list">
-            <li><strong>Por qué existe:</strong> es una decisión de diseño para que un panic no se transforme <em>silenciosamente</em> en corrupción de datos. El lock te obliga a decidir qué hacer.</li>
-            <li>Es la razón por la que en todo el código de la materia se ve <code>.lock().unwrap()</code> o <code>.expect(...)</code>: se está <em>propagando</em> ese posible envenenamiento.</li>
-            <li>Si sabés que el dato quedó consistente, se puede recuperar igual con <code>into_inner()</code> sobre el error.</li>
-          </ul>
-
-          <div class="callout warning"><strong>Para no perder puntos:</strong> la diferencia conceptual de fondo no es la API, es que el lock de Unix es <strong>advisory</strong> (cooperativo: protege solo si todos lo consultan) mientras que el de Rust es <strong>estructural</strong> (el dato vive adentro del lock, no hay camino para saltearlo). Sumado a eso, el <strong>RAII</strong> del guard elimina la clase entera de bugs de «me olvidé el <code>unlock()</code>» y el <strong>poisoning</strong> convierte un panic con lock tomado en un error visible en vez de en datos corruptos. Ojo también con el <strong>self-deadlock</strong>: pedir <code>write()</code> teniendo vivo un <code>read()</code> en el <em>mismo</em> hilo traba el programa. Ver <a href="#locks">§11</a>.</div>
+          <p><strong>Lock envenenado (<em>poisoned</em>):</strong> si un thread hace <code>panic!</code> <em>mientras tiene el lock tomado</em>, el dato protegido puede haber quedado a mitad de una modificación, o sea <strong>inconsistente</strong>. Rust marca ese lock como envenenado y las llamadas posteriores a <code>lock()</code>/<code>read()</code>/<code>write()</code> devuelven <code>Err</code>, en vez de entregar datos posiblemente corruptos. Por eso en todo el código de la materia se ve <code>.lock().unwrap()</code>: está propagando ese posible envenenamiento. Existe para que un panic no se convierta silenciosamente en corrupción de datos.</p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> la diferencia de fondo no es la API sino que el lock de Unix es <strong>advisory</strong> (protege solo si todos lo consultan) y el de Rust es <strong>estructural</strong> (el dato vive adentro del lock). Ver <a href="#locks">§11</a>.</div>
         </details>
 
         <h3>Ej 2 — Modelos, fork-join y Redes de Petri</h3>
