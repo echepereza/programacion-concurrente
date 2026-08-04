@@ -20,7 +20,12 @@ import glob
 import html as htmllib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE = os.path.join(HERE, '..', 'aprendizaje-automatico', 'index.html')
+# Shell base (CSS/JS: buscador, notas, resaltador, tema, service worker). Se
+# vendoriza en template.html para que el build sea autocontenido; si existe el
+# repo de referencia hermano, se prioriza esa copia.
+_SIBLING_TEMPLATE = os.path.join(HERE, '..', 'aprendizaje-automatico', 'index.html')
+_LOCAL_TEMPLATE = os.path.join(HERE, 'template.html')
+TEMPLATE = _SIBLING_TEMPLATE if os.path.exists(_SIBLING_TEMPLATE) else _LOCAL_TEMPLATE
 
 ACCENT = '#c2410c'
 

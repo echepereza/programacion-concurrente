@@ -22,7 +22,7 @@
             </tbody>
           </table>
         </div>
-        <div class="callout warning"><strong>Distinción fina que piden:</strong> deadlock ≠ starvation. En deadlock <em>nadie</em> avanza (falla de safety/liveness global); en starvation el sistema <em>sí</em> progresa pero un proceso concreto es postergado para siempre (falla de liveness individual). Un busy-wait puede <em>funcionar</em> pero es «espera activa» que quema CPU; una race puede dar el resultado correcto por casualidad en algunas corridas y mal en otras.</div>
+        <div class="callout warning"><strong>Distinción fina que piden:</strong> deadlock ≠ starvation. en deadlock <em>nadie</em> avanza y viola <strong>safety</strong> (la «ausencia de deadlock» es propiedad de seguridad: nunca debe alcanzarse el estado de bloqueo mutuo); en starvation el sistema <em>sí</em> progresa pero un proceso concreto es postergado para siempre (falla de <strong>liveness</strong>). Un busy-wait puede <em>funcionar</em> pero es «espera activa» que quema CPU; una race puede dar el resultado correcto por casualidad en algunas corridas y mal en otras.</div>
 
         <p><strong>Condiciones de Coffman</strong> (las cuatro que deben darse juntas para un deadlock): exclusión mutua, <em>hold &amp; wait</em> (retener y esperar), <em>no preemption</em> (no expropiación) y <strong>espera circular</strong>. Basta impedir una para prevenirlo.</p>
 
