@@ -3559,27 +3559,69 @@ handle.join().unwrap();</code></pre>
         <h3>Ej 2 — Modelos, fork-join y Redes de Petri</h3>
         <details>
           <summary>Red Ordinaria vs Red General de Petri</summary>
-          <p>Ambas son grafos dirigidos bipartitos. <strong>Ordinaria</strong>: <code>PN=(T,P,A)</code> (transiciones, lugares, arcos). <strong>General</strong>: agrega <code>W: A→N</code> (peso de cada arco) y <code>M0</code> (marca inicial): <code>PN=(T,P,A,W,M0)</code>. Regla de disparo general: <code>t</code> habilitada si <code>M(p) ≥ W(p,t)</code> para toda entrada; al disparar consume <code>W(p,t)</code> y produce <code>W(t,p')</code>. Ver <a href="#petri">§14</a>.</p>
+          <p>Una <strong>red de Petri</strong> es una herramienta gráfica y matemática para modelar y analizar sistemas concurrentes o distribuidos. Es un <strong>grafo dirigido bipartito</strong> con dos tipos de nodos: <strong>lugares</strong> (estados del sistema) y <strong>transiciones</strong> (eventos que provocan cambios de estado).</p>
+          <ul class="study-list">
+            <li><strong>Red Ordinaria:</strong> <code>PN = (T, P, A)</code>, donde <code>T</code> son las transiciones, <code>P</code> los lugares y <code>A</code> los arcos que conectan lugares con transiciones y viceversa. <strong>Todos los arcos tienen peso 1</strong>: cada disparo consume y produce exactamente un token por arco. Describe la <em>topología</em> del sistema.</li>
+            <li><strong>Red General:</strong> <code>PN = (T, P, A, W, M0)</code>. Extiende a la ordinaria agregando dos componentes a la tupla: <code>W: A → N</code>, la <strong>función de peso</strong> (cuántos tokens transporta cada arco), y <code>M0: P → N ∪ {0}</code>, la <strong>marca inicial</strong> (la configuración de tokens al arrancar).</li>
+          </ul>
+          <p><strong>Regla de disparo (general):</strong> <code>t</code> está habilitada si <code>M(p) ≥ W(p,t)</code> para todo lugar de entrada <code>p</code>; al dispararse consume <code>W(p,t)</code> tokens de cada entrada y produce <code>W(t,p')</code> en cada salida. La ordinaria es el caso particular con todos los pesos en 1.</p>
+          <p><strong>Qué te permite modelar la general que la ordinaria no:</strong> los pesos dejan consumir o producir <em>varios tokens de golpe y de forma atómica</em> — «necesito K recursos a la vez» (un filósofo que toma sus dos palitos), o producción/consumo en lote.</p>
+          <p>Sobre <code>M0</code>: que sea parte formal de la tupla de la general y no de la ordinaria <strong>no significa que la ordinaria no tenga marcado inicial</strong>, sino que no es parte definitoria de su <em>estructura</em>. La ordinaria describe la arquitectura con independencia de en qué estado arranque; la general fija el punto de partida como parte de la definición.</p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> el docente marcó en rojo, en un final, «<em>no explicás lo que es c/u, solo las diferencias</em>». <strong>Definí cada red por separado</strong> —qué <em>es</em> una ordinaria, qué <em>es</em> una general— y recién ahí compará. Responder solo el delta pierde puntos. Ojo también con la redacción: se dice «todos sus arcos <strong>tienen peso 1</strong>», no «todos sus arcos <em>es</em> 1». Ver <a href="#petri">§14</a>.</div>
         </details>
         <details>
           <summary>¿Qué es el grafo de alcance? Dibujar un ejemplo</summary>
-          <p>Lista todas las marcas alcanzables desde <code>M0</code>; cada nodo es una marca y cada arco <code>(M,M')</code> indica que <code>t</code> estaba habilitada en <code>M</code> y se disparó llegando a <code>M'</code>. Ejemplo con <code>P={p1,p2,p3,p4}</code> (<code>t1</code> bifurca <code>p1→p2,p3</code>; join <code>t4: p2,p3→p4</code>):</p>
+          <p>Lista <strong>todas las marcas alcanzables desde <code>M0</code></strong> y las conecta con la transición que lleva de una a la otra: cada nodo es una marca <code>M</code> y cada arco <code>(M, M')</code> indica que <code>t</code> estaba habilitada en <code>M</code> y se disparó produciendo <code>M'</code>. Es la herramienta para <strong>analizar la red</strong>: si el conjunto de marcas es finito la red es <em>acotada</em>, una marca sin arcos de salida es un <strong>deadlock</strong>, y que toda transición aparezca en algún arco indica que la red es <em>viva</em>.</p>
+          <p>Ejemplo con <code>P={p1,p2,p3,p4}</code> (<code>t1</code> bifurca <code>p1→p2,p3</code>; join <code>t4: p2,p3→p4</code>):</p>
           <figure class="diagram">
             <div class="mermaid">
-flowchart LR
-    M0(("M0 = (1,0,0,0)")) -->|t1| M1(("M1 = (0,1,1,0)"))
-    M1 -->|t4| M2(("M2 = (0,0,0,1)"))
+        flowchart LR
+            M0(("M0 = (1,0,0,0)")) -->|t1| M1(("M1 = (0,1,1,0)"))
+            M1 -->|t4| M2(("M2 = (0,0,0,1)"))
             </div>
-            <figcaption>El diagrama grande de §14 muestra el caso con el «rombo» de concurrencia (dos transiciones independientes que conmutan).</figcaption>
+            <figcaption>El diagrama grande de <a href="#petri">§14</a> muestra el caso con el «rombo» de concurrencia (dos transiciones independientes que conmutan y llegan a la misma marca).</figcaption>
           </figure>
         </details>
         <details>
           <summary>Modelar productor-consumidor con buffer acotado (Petri)</summary>
-          <p>Dos lugares para el buffer: uno de <strong>ítems</strong> (empieza vacío; el consumidor requiere un token acá para consumir) y un <strong><code>notFull</code></strong> que empieza con <code>N</code> tokens (la capacidad; el productor requiere un token acá para depositar). Diagrama completo con notación <code>p1..p6/t1..t4</code> en <a href="#petri">§14</a>.</p>
+          <p><strong>Lugares</strong> (con su marca inicial):</p>
+          <ul class="study-list">
+            <li><strong>p1</strong> (<code>M0=1</code>): productor listo · <strong>p2</strong> (<code>M0=0</code>): produciendo</li>
+            <li><strong>p3</strong> (<code>M0=1</code>): consumidor listo · <strong>p4</strong> (<code>M0=0</code>): consumiendo</li>
+            <li><strong>p5</strong> (<code>M0=0</code>): <strong>ítems en el buffer</strong> (el <code>notEmpty</code>)</li>
+            <li><strong>p6</strong> (<code>M0=N</code>): <strong>huecos libres</strong> (el <code>notFull</code>; N es la capacidad)</li>
+          </ul>
+          <p><strong>Transiciones:</strong></p>
+          <ul class="study-list">
+            <li><strong>t1 — inicia producción:</strong> requiere p1 (productor listo) <em>y</em> p6 (que haya un hueco); produce p2. Acá se frena el productor si el buffer está lleno.</li>
+            <li><strong>t2 — deposita el ítem:</strong> consume p2 y produce p1 (vuelve a estar listo) y p5 (un ítem más).</li>
+            <li><strong>t3 — retira el ítem:</strong> requiere p3 (consumidor listo) <em>y</em> p5 (que haya un ítem); produce p4 y devuelve el hueco a p6. Acá se frena el consumidor si el buffer está vacío.</li>
+            <li><strong>t4 — termina de consumir:</strong> consume p4 y produce p3.</li>
+          </ul>
+          <figure class="diagram">
+            <div class="mermaid">
+        flowchart LR
+            p1(("p1 · productor listo · 1")) --> t1["t1 · inicia producción"]
+            p6(("p6 · huecos libres · N")) --> t1
+            t1 --> p2(("p2 · produciendo"))
+            p2 --> t2["t2 · deposita"]
+            t2 --> p1
+            t2 --> p5(("p5 · ítems"))
+            p5 --> t3["t3 · retira"]
+            p3(("p3 · consumidor listo · 1")) --> t3
+            t3 --> p4(("p4 · consumiendo"))
+            t3 --> p6
+            p4 --> t4["t4 · termina consumo"]
+            t4 --> p3
+            </div>
+            <figcaption>Los lugares <code>p5</code> (ítems) y <code>p6</code> (huecos) hacen de los dos semáforos del problema. <strong>Invariante: <code>p2 + p5 + p6 = N</code></strong> — la suma se conserva en los cuatro disparos, y eso es lo que prueba que el buffer está <em>acotado</em>: nunca hay más de N ítems. Ver <a href="#petri">§14</a>.</figcaption>
+          </figure>
         </details>
         <details>
           <summary>Fork-join, work stealing, y ¿por qué NO una única cola de tareas?</summary>
-          <p><strong>Fork-join</strong>: dividir recursivamente en subtareas independientes, resolver en paralelo y combinar (determinístico, sin races, threads aislados). <strong>Work stealing</strong>: cada hilo tiene su <em>deque</em>; saca/encola en su propio extremo y, si se queda sin trabajo, roba del <em>otro</em> extremo de la cola de otro hilo. <strong>Una sola cola global sería mala</strong>: pasa a ser <em>estado mutable compartido</em> que necesita exclusión mutua; un hilo que encola muchas subtareas retiene el lock y hace esperar al resto → contención y latencia. Ver <a href="#forkjoin">§5</a>.</p>
+          <p><strong>Fork-join:</strong> dividir <em>recursivamente</em> un cómputo grande en subtareas independientes, resolverlas en paralelo y combinar (join) los resultados. Las subtareas <strong>no necesitan bloquearse salvo para esperar la finalización de sus propias subtareas</strong>; pueden crearse en cualquier momento sin sincronización adicional.</p>
+          <p><strong>Work stealing:</strong> algoritmo de <em>scheduling para balanceo de carga</em>. Cada hilo mantiene una <strong>cola de doble extremo (deque)</strong>. Cuando genera subtareas las encola al <strong>final</strong> de su propia cola; cuando se queda sin trabajo, <strong>elige un hilo arbitrariamente</strong> y <strong>roba una tarea del inicio</strong> de su cola. Se roba del extremo opuesto porque el dueño y el ladrón trabajan en puntas distintas, minimizando la sincronización entre ellos.</p>
+          <p><strong>Una única cola sería mala:</strong> la cola pasa a ser <em>estado mutable compartido</em> que requiere exclusión mutua; dos hilos competirían para tomar la misma tarea. Un hilo que genera muchas subtareas <strong>retiene el lock mientras las encola</strong>, haciendo esperar a todos los demás. Resultado: contención del lock, latencia, y la cola se vuelve <strong>cuello de botella</strong>, destruyendo el paralelismo. Ver <a href="#forkjoin">§5</a>.</p>
         </details>
         <details>
           <summary>[Parcial] Programación asincrónica — Verdadero/Falso</summary>
@@ -3622,27 +3664,105 @@ flowchart LR
         </details>
         <details>
           <summary>[Parcial] Modelar en Petri: productor-consumidor y lector-escritor</summary>
-          <p>Productor-consumidor con buffer acotado: resuelto en <a href="#petri">§14</a> (lugares <code>p5</code> ítems / <code>p6</code> huecos). Lector-escritor sin preferencia: un lugar «recurso»; con preferencia de escritura se agregan <strong>arcos inhibidores</strong> que frenan a los lectores si hay un escritor esperando (ver <a href="#clasicos">§13</a> y <a href="#petri">§14</a>).</p>
+
+          <h3>(a) Productor-Consumidor con buffer acotado</h3>
+          <p><strong>Lugares:</strong></p>
+          <ul class="study-list">
+            <li><code>p1</code> — productor listo (M0 = 1)</li>
+            <li><code>p2</code> — produciendo</li>
+            <li><code>p3</code> — consumidor listo (M0 = 1)</li>
+            <li><code>p4</code> — consumiendo</li>
+            <li><code>p5</code> — ítems en buffer (M0 = 0)</li>
+            <li><code>p6</code> — huecos libres (M0 = N)</li>
+          </ul>
+          <p><strong>Transiciones:</strong> <code>t1</code> (produce), <code>t2</code> (termina producción), <code>t3</code> (consume), <code>t4</code> (termina consumo).</p>
+          <figure class="diagram">
+            <div class="mermaid">
+        flowchart LR
+            p1(("p1 · productor listo")) --> t1["t1"]
+            p6(("p6 · huecos (N)")) --> t1
+            t1 --> p2(("p2 · produciendo"))
+            p2 --> t2["t2"]
+            t2 --> p1
+            t2 --> p5(("p5 · ítems"))
+            p5 --> t3["t3"]
+            p3(("p3 · consumidor listo")) --> t3
+            t3 --> p4(("p4 · consumiendo"))
+            t3 --> p6
+            p4 --> t4["t4"]
+            t4 --> p3
+            </div>
+            <figcaption><code>t1</code> solo dispara si hay hueco libre (consume de <code>p6</code>); <code>t3</code> consume ítem (de <code>p5</code>) y devuelve hueco (produce en <code>p6</code>). Invariante: <code>p5 + p6 = N</code> se mantiene.</figcaption>
+          </figure>
+
+          <h3>(b) Lector-Escritor</h3>
+          <p><strong>Caso 1: Sin preferencia, N lectores conocido y acotado (técnica de pesos, sin inhibidores).</strong></p>
+          <p>Un único lugar <code>recurso</code> con <code>M0 = N</code> tokens. Transición <code>leer</code> consume 1 token al empezar y lo devuelve al terminar → múltiples lectores concurrentes. Transición <code>escribir</code> consume los N tokens de golpe (arco de peso N) y los devuelve → impide dispararse si hay algún lector activo. No hay arco inhibidor: la exclusión sale del conteo de tokens.</p>
+
+          <p><strong>Caso 2: Con preferencia de escritura, o sin conocer N de antemano (arco inhibidor obligatorio).</strong></p>
+          <p>La preferencia de escritura exige frenar a los lectores mientras haya un escritor esperando. Un escritor que espera <em>no consumió ningún token</em> — el test de cero («no hay ningún lector activo») no se puede expresar contando tokens. Se usa arco inhibidor: la transición <code>entrar lector</code> solo dispara si el lugar de escritores esperando está <em>vacío</em>.</p>
+          <figure class="diagram">
+            <div class="mermaid">
+        flowchart LR
+            LQ(("L · quieren leer")) --> eL["entrar lector"]
+            eL --> LE(("leyendo"))
+            LE --> sL["salir lector"]
+            WQ(("W · quieren escribir")) --> eW["entrar escritor"]
+            eW --> ES(("escribiendo"))
+            ES --> sW["salir escritor"]
+            ES -.->|inhibe| eL
+            WQ -.->|inhibe| eL
+            LE -.->|inhibe| eW
+            ES -.->|inhibe| eW
+            sL --> LQ
+            sW --> WQ
+            </div>
+            <figcaption>Arcos punteados = inhibidores (la transición dispara solo si el lugar está vacío). <code>entrar lector</code> necesita <code>leyendo</code> y <code>W</code> vacíos; <code>entrar escritor</code> necesita <code>leyendo</code> y otro <code>escribiendo</code> vacíos. Resultado: los escritores tienen prioridad; los lectores pueden inanirse (starvation).</figcaption>
+          </figure>
+          <div class="callout warning"><strong>Matiz de la cátedra:</strong> el arco inhibidor es lo que le da Turing-completitud a Petri: es el <em>único</em> mecanismo que puede detectar un test de cero. Sin inhibidores (red ordinaria o general), la red solo puede preguntar «¿hay al menos K tokens?», nunca «¿está vacío?». Por eso no es posible modelar preferencia de escritura sin inhibidores, sea cual sea N.</div>
+          <p><a href="#petri">§14</a> · <a href="#clasicos">§13</a></p>
         </details>
 
         <details>
           <summary>¿Qué modelos de concurrencia se ven? ¿Cómo se protege el estado compartido?</summary>
-          <p>Los modelos: <strong>estado mutable/compartido</strong> (comparten variables → requiere sincronización explícita, el más propenso a races), <strong>fork-join</strong> (subtareas independientes en paralelo, sin estado compartido), <strong>canales/mensajes</strong> (se comunican enviando mensajes, sin memoria compartida; ej.: sockets), <strong>programación asincrónica</strong> (tareas livianas cooperativas, ceden en I/O) y <strong>actores</strong> (abstracción del pasaje de mensajes, estado privado). Para <strong>proteger el estado compartido</strong> se <em>serializa</em> el acceso: se marcan regiones (secciones críticas) que no pueden superponerse; si un procedimiento del conjunto se ejecuta, otro que quiera entrar debe esperar. Ver <a href="#modelos">§4</a>.</p>
+          <p>Los modelos: <strong>estado mutable/compartido</strong> (comparten variables → requiere sincronización explícita, el más propenso a races), <strong>fork-join</strong> (subtareas independientes en paralelo, sin estado compartido), <strong>canales/mensajes</strong> (se comunican enviando mensajes, sin memoria compartida; ej.: sockets), <strong>programación asincrónica</strong> (tareas livianas cooperativas, ceden en I/O) y <strong>actores</strong> (abstracción del pasaje de mensajes, estado privado).</p>
+
+          <p><strong>Protección del estado compartido:</strong> se <em>serializa</em> el acceso marcando <strong>secciones críticas</strong> (regiones de código que no pueden superponerse). Si un proceso está ejecutando la sección crítica, otro que quiera entrar debe esperar.</p>
+
+          <div class="table-wrap"><table>
+            <thead><tr><th>Modelo</th><th>¿Comparte estado?</th><th>Cómo se protege</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Estado mutable compartido</strong></td><td>Sí</td><td><strong>Mutex</strong> (excluye un solo escritor), <strong>RwLock</strong> (N lectores o 1 escritor), <strong>tipos atómicos</strong> (operaciones indivisibles sin lock), <strong>semáforos</strong> (contador de recursos), <strong>monitores</strong> (mutex + variables de condición).</td></tr>
+              <tr><td><strong>Fork-Join</strong></td><td>No</td><td>No requiere. Las subtareas son independientes; solo se bloquean esperando el join. Determinístico.</td></tr>
+              <tr><td><strong>Canales/Mensajes</strong></td><td>No</td><td>No requiere. Los procesos no comparten memoria; el pasaje de mensajes es exclusivo por diseño (un mensaje por transporte).</td></tr>
+              <tr><td><strong>Asincrónico</strong></td><td>Sí (típicamente)</td><td>Depende de la implementación. Si hay estado compartido entre tasks, se protege con Mutex/RwLock. El runtime async es single-threaded (Tokio, async/await) → sin races si no hay state compartido explícito.</td></tr>
+              <tr><td><strong>Actores</strong></td><td>No</td><td>No requiere. Cada actor tiene estado privado. La exclusión mutua es automática: la mailbox procesa mensajes secuencialmente, uno a la vez.</td></tr>
+            </tbody>
+          </table></div>
+
+          <div class="callout warning"><strong>Matiz clave:</strong> fork-join, canales y actores <em>no comparten estado</em> → no hay condiciones de carrera por diseño, no necesitan mutex. El costo de sincronización no existe. Solo estado compartido (modelo 1) y async con estado explícito requieren protección.</div>
+
+          <p>Ver <a href="#modelos">§4</a>, <a href="#locks">§11</a> y <a href="#semaforos">§12</a>.</p>
         </details>
         <details>
           <summary>Fork-join: performance ideal y desventajas</summary>
-          <p><strong>Performance ideal:</strong> <em>speedup lineal</em>, <code>t_secuencial / N_threads</code>, siempre que las tareas estén balanceadas y el costo de sincronización/combinación sea despreciable. <strong>Desventajas:</strong> tareas <em>desbalanceadas</em> (unas tardan más), costo de sincronización/combinación en el <code>join</code> (esperar a que todas terminen), y que <em>no todo problema</em> es subdividible en tareas independientes. Ver <a href="#forkjoin">§5</a>.</p>
+          <p><strong>Performance ideal:</strong> el tiempo para resolver el problema de forma secuencial dividido por el número de threads disponibles (speedup lineal). En la práctica no se alcanza por: <em>desbalance de tareas</em> (unas tardan más que otras, y el join espera a la más lenta) y <em>costo de sincronización/combinación</em> (procesamiento extra para unir los resultados parciales).</p>
+          <p><strong>Ventajas:</strong> no hay condiciones de carrera porque las unidades de trabajo están aisladas; el resultado es siempre determinístico (no depende de las velocidades relativas de los threads); no hace falta compartir memoria entre threads.</p>
+          <p><strong>Desventajas:</strong> exige que las tareas sean independientes (no sirve si hay estado compartido que serializar); el desbalance de carga reduce el speedup; el costo de sincronización en el <code>join</code> agrega latencia. Ver <a href="#forkjoin">§5</a>.</p>
         </details>
         <details>
           <summary>Async: future, await, tarea, Pin y modelo «piñata»</summary>
           <ul class="study-list">
-            <li><strong>Future:</strong> estructura que representa el resultado de un cómputo asincrónico que <em>todavía no terminó</em> pero estará disponible después.</li>
+            <li><strong>Future:</strong> estructura que representa el resultado de un cómputo asincrónico que <em>todavía no terminó</em> pero estará disponible después. Invocar una función <code>async</code> <strong>no ejecuta nada</strong>: solo crea el Future. La ejecución comienza cuando el executor hace el primer <code>poll</code> (o al hacer <code>await</code>).</li>
+            <li><strong>poll:</strong> método que interroga un future para saber si terminó. Devuelve <code>Poll::Ready(valor)</code> si la operación completó, o <code>Poll::Pending</code> si no. <strong>Llamar a <code>poll</code> no garantiza progreso</strong>: puede retornar <code>Pending</code> porque el recurso aún no está listo.</li>
+            <li><strong>Executor:</strong> la abstracción que implementa el <em>runtime</em> (Tokio, async-std). Es el encargado de hacer <code>poll</code> sobre los futures — <strong>no el thread principal</strong>. Traduce <code>await</code> en llamadas a <code>poll</code> y gestiona los hilos subyacentes.</li>
             <li><strong>async / await:</strong> <code>async</code> marca una función cuyo resultado es un future; <code>await</code> <em>suspende</em> la tarea hasta que el future esté listo <strong>sin bloquear el thread</strong> (devuelve el control al executor). <code>block_on</code> ejecuta un async de forma sincrónica bloqueando el thread (no usar dentro de async).</li>
             <li><strong>Tarea:</strong> unidad liviana de ejecución async administrada por el executor; puede suspenderse/reanudarse con <code>await</code>.</li>
             <li><strong>Pin:</strong> garantiza que un objeto no cambie de dirección en memoria; hace falta porque los futures pueden ser <em>auto-referenciados</em> y moverse invalidaría esas referencias.</li>
-            <li><strong>Modelo piñata:</strong> la tarea se «abre» en cada <code>await</code>, se suspende y devuelve el control al executor, que intercala otras tareas; así se atienden muchas conexiones con pocos threads.</li>
+            <li><strong>Modelo piñata:</strong> es <strong>colaborativo</strong>, no preventivo. La tarea se «abre» en cada <code>await</code>, se suspende voluntariamente y devuelve el control al executor, que intercala otras tareas. <strong>Nadie interrumpe a la tarea por la fuerza</strong>: solo cede cuando llega a un punto <code>await</code>.</li>
           </ul>
           <p><strong>Cuándo usar async vs threads:</strong> async para muchas tareas <em>I/O-bound</em> con mucha espera (ej.: servidor web con miles de conexiones); threads para tareas <em>CPU-bound</em> que aprovechan varios núcleos (ej.: procesar imágenes). Ver <a href="#async">§7</a>.</p>
+          <div class="callout warning"><strong>Riesgo de starvation:</strong> el modelo piñata es cooperativo y <strong>no garantiza fairness</strong>. Una tarea CPU-bound que nunca llega a un <code>await</code> acapara el hilo del executor y mata de hambre a las otras. Por eso el cómputo pesado va en <code>spawn_blocking</code>, no en una tarea async común.</div>
         </details>
         <details>
           <summary>Funciones de entrada y salida de una transición (Petri)</summary>
