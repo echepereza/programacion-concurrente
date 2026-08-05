@@ -997,7 +997,30 @@ flowchart LR
         </details>
         <details>
           <summary>Algoritmo Ring de elección de líder (paso a paso)</summary>
-          <p>Procesos ordenados lógicamente, cada uno conoce a su sucesor. Un proceso nota que el coordinador falló → arma <code>ELECTION</code> con su ID y lo manda al sucesor. Cada receptor <strong>agrega su ID</strong> y reenvía, hasta que el mensaje vuelve al iniciador. Éste lo cambia a <code>COORDINATOR</code>: el nuevo líder es el de <strong>mayor ID de la lista</strong>. Variante: propagar solo el ID más alto visto en vez de la lista completa. El <code>COORDINATOR</code> se saca de circulación al completar la vuelta. Diagrama en <a href="#exclusion">§17</a>.</p>
+          <ol class="study-list">
+            <li>Procesos ordenados lógicamente: cada uno conoce a su sucesor en el anillo.</li>
+            <li>Un proceso detecta que el coordinador falló y arma un mensaje <code>ELECTION</code> con su ID.</li>
+            <li>Lo envía a su sucesor en el anillo.</li>
+            <li>Cada receptor agrega su ID al mensaje y lo reenvía a su sucesor.</li>
+            <li>El mensaje circula hasta volver al proceso iniciador.</li>
+            <li>El iniciador lo cambia a <code>COORDINATOR</code> y reenvía con la lista acumulada.</li>
+            <li>El nuevo coordinador es el proceso con el <strong>mayor ID de la lista</strong>.</li>
+            <li>El mensaje <code>COORDINATOR</code> se elimina de circulación una vez completa la vuelta.</li>
+            <li><strong>Variante:</strong> en lugar de mantener la lista entera, se propaga solo el <strong>ID más alto visto</strong>, reduciendo el tamaño del mensaje.</li>
+          </ol>
+          <figure class="diagram">
+            <div class="mermaid">
+        flowchart LR
+            A["P2 inicia: ELECTION 2"] --> B["P3 suma ID: ELECTION 2,3"]
+            B --> C["P5 suma ID: ELECTION 2,3,5"]
+            C --> D["P4 suma ID: ELECTION 2,3,5,4"]
+            D --> E["Vuelve a P2: mayor = 5"]
+            E --> F["P2 envía COORDINATOR P5"]
+            F --> G["Mensaje se elimina al circular"]
+            </div>
+            <figcaption>Una vuelta del anillo: el mensaje ELECTION acumula IDs de cada proceso; al volver al iniciador, se elige al de mayor ID como coordinador y se envía el mensaje COORDINATOR.</figcaption>
+          </figure>
+          <p><a href="#exclusion">§17</a></p>
         </details>
         <details>
           <summary>Costo y complejidad: distribuido vs centralizado</summary>
@@ -1016,8 +1039,8 @@ flowchart LR
           <summary>Acción, regla, comportamiento y conocimiento de una entidad</summary>
           <ul class="study-list">
             <li><strong>Acción:</strong> secuencia <em>finita y atómica</em> de operaciones (se ejecuta toda o nada).</li>
-            <li><strong>Regla:</strong> indica cómo reacciona la entidad ante un evento externo <em>según su estado interno</em> (qué acción ejecutar).</li>
-            <li><strong>Comportamiento:</strong> el conjunto de reglas; se lo llama también <em>protocolo</em> o <em>algoritmo distribuido</em>.</li>
+            <li><strong>Regla:</strong> la relación <code>estado × evento → acción</code>: indica cómo reacciona la entidad ante un evento externo <em>según su estado interno</em>. Hay <strong>una única regla por par (estado, evento)</strong>.</li>
+            <li><strong>Comportamiento:</strong> el conjunto de <em>todas</em> las reglas de la entidad; se lo llama también <em>protocolo</em> o <em>algoritmo distribuido</em>. Es <strong>homogéneo</strong> si todas las entidades del ambiente tienen el mismo comportamiento.</li>
             <li><strong>Conocimiento (local):</strong> el contenido de la memoria local y lo que se deriva; sin fallas no se pierde. Tipos: <em>información métrica</em> (mediciones de la red: nº de nodos, aristas), <em>propiedades topológicas</em> (forma del grafo: anillo, acíclico) y <em>mapas topológicos</em> (representación de quién está conectado con quién).</li>
           </ul>
         </details>
@@ -1039,6 +1062,43 @@ flowchart LR
             <li><strong>Distribuido:</strong> sin líder; para entrar se pide permiso a <em>todos</em>; cada uno responde OK si no está ni quiere entrar, y si varios quieren, gana el de <strong>timestamp menor</strong> (Ricart-Agrawala). Sin SPOF, pero muchos mensajes y sensible a caídas. Conviene en P2P/sensores.</li>
             <li><strong>Token ring:</strong> los procesos forman un anillo y circula un <em>token</em>; solo quien lo tiene entra a la SC (no se puede acaparar). No hace falta saber quién está en la SC. Problema: si se pierde el token (proceso cae con él) hay que <em>detectarlo y regenerarlo</em> (timeouts/ping-pong). Conviene en redes estables e industriales.</li>
           </ul>
+          <figure class="diagram">
+            <div class="mermaid">
+        flowchart LR
+            subgraph centralized["CENTRALIZADO"]
+        PC1["P1"]
+        PC2["P2"]
+        PC3["P3"]
+        COORD["Coordinador"]
+        PC1 -->|request| COORD
+        PC2 -->|request| COORD
+        PC3 -->|request| COORD
+        COORD -->|responde OK| PC1
+        COORD -->|responde OK| PC2
+        COORD -->|responde OK| PC3
+            end
+
+            subgraph distributed["DISTRIBUIDO"]
+        PD1["P1"]
+        PD2["P2"]
+        PD3["P3"]
+        PD1 -->|pide a todos| PD2
+        PD1 -->|pide a todos| PD3
+        PD2 -->|OK| PD1
+        PD3 -->|OK| PD1
+            end
+
+            subgraph token["TOKEN RING"]
+        PT1["P1"]
+        PT2["P2"]
+        PT3["P3"]
+        PT1 -.->|token| PT2
+        PT2 -.->|token| PT3
+        PT3 -.->|token| PT1
+            end
+            </div>
+            <figcaption>Tres esquemas de exclusión mutua distribuida: centralizado con coordinador único, distribuido sin líder con timestamps, y token ring con circulación de token.</figcaption>
+          </figure>
           <p>Ver <a href="#exclusion">§17</a>.</p>
         </details>
         <details>
@@ -1047,16 +1107,36 @@ flowchart LR
         </details>
         <details>
           <summary>Transacciones: qué son, primitivas y propiedades ACID</summary>
-          <p>Una <strong>transacción</strong> es una secuencia de operaciones que se ejecuta como <em>una sola unidad lógica</em>: todo o nada. <strong>Primitivas atómicas:</strong> <code>BEGIN</code>, <code>END</code> (intenta commit), <code>ABORT</code> (deshace), <code>READ</code>, <code>WRITE</code>. <strong>ACID:</strong> <em>Atomicidad</em> (todo o nada), <em>Consistencia</em> (deja el sistema en estado válido), <em>Aislamiento</em> (no interfiere con otras) y <em>Durabilidad</em> (una vez commiteado, permanece). Ver <a href="#transacciones">§15</a>.</p>
+          <p>Una <strong>transacción</strong> es una secuencia de operaciones que se ejecuta como <em>una sola unidad lógica</em>: todo o nada.</p>
+          <p><strong>Primitivas atómicas:</strong></p>
+          <ul class="study-list">
+            <li><code>BEGIN</code>: marca el inicio de la transacción.</li>
+            <li><code>READ</code> / <code>WRITE</code>: operan sobre los datos (lectura y escritura).</li>
+            <li><code>END</code>: intenta confirmar el commit (no lo garantiza).</li>
+            <li><code>ABORT</code>: deshace todos los cambios y vuelve al estado previo.</li>
+          </ul>
+          <p><strong>Propiedades ACID:</strong></p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Propiedad</th><th>Qué garantiza</th><th>Cómo se logra</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Atomicidad</strong></td><td>Todo o nada: se completa toda la transacción o no se realiza en absoluto.</td><td>Log persistente o workspace privado para poder deshacer los cambios ante fallo.</td></tr>
+                <tr><td><strong>Consistencia</strong></td><td>La transacción lleva el sistema de un estado válido a otro válido, respetando los invariantes.</td><td>Validación de invariantes antes de confirmar.</td></tr>
+                <tr><td><strong>Aislamiento</strong></td><td>Las transacciones concurrentes no interfieren; el resultado es equivalente a una ejecución serial.</td><td>Control de concurrencia: 2PL, timestamps o concurrencia optimista.</td></tr>
+                <tr><td><strong>Durabilidad</strong></td><td>Una vez commiteada, la transacción sobrevive a fallos del sistema.</td><td>Escritura en disco y persistencia del log antes de confirmar.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Ver <a href="#transacciones">§15</a>.</p>
         </details>
         <details>
           <summary>Algoritmos de implementación de transacciones</summary>
           <ul class="study-list">
             <li><strong>Private workspace:</strong> la transacción trabaja sobre una <em>copia</em> de los archivos; al commit se persiste, al abort se descarta. Simple, pero ocupa mucha memoria y no valida conflictos.</li>
             <li><strong>Write-ahead log (WAL):</strong> se opera <em>in place</em> pero se anota cada operación en un <em>log</em> antes de tocar el storage; para abortar se deshace leyendo el log de atrás hacia adelante.</li>
-            <li><strong>Commit en dos fases (2PC):</strong> el coordinador manda <code>PREPARE</code>; los participantes votan <code>READY</code>; si todos, manda <code>COMMIT</code>. Ver el diseño de <a href="#ejercicios">Ej 5 (conciertos)</a>.</li>
+            <li><strong>Commit en dos fases (2PC):</strong> coordinador y participantes escriben en un log antes de cada fase; PREPARE/READY en la fase 1, COMMIT en la 2. Si el coordinador cae entre el voto y la decisión, los participantes que votaron READY quedan <em>in-doubt</em> (bloqueados, reteniendo locks) hasta su recuperación.</li>
             <li><strong>2PL (two-phase locking):</strong> fase de <em>crecimiento</em> (solo toma locks) y de <em>decrecimiento</em> (solo libera; no vuelve a tomar). Garantiza serialización pero puede dar deadlocks.</li>
-            <li><strong>Concurrencia optimista:</strong> modifica sin locks y, al commitear, <em>valida</em> que nadie más tocó los mismos archivos; si hubo conflicto, aborta.</li>
+            <li><strong>Concurrencia optimista:</strong> tres fases: (a) <em>lectura</em>, trabaja sobre copia/workspace privado sin locks; (b) <em>validación</em>, al commit se verifica si otra transacción tocó los mismos datos; (c) <em>escritura</em>, si no hay conflicto se persiste, si hay se aborta y reintenta. Libre de deadlocks pero caro bajo alta contención (el costo del rollback se paga solo ante conflictos).</li>
             <li><strong>Timestamps:</strong> cada archivo tiene timestamp de lectura/escritura; la transacción recibe uno global y aborta si detecta un acceso «fuera de orden». Evita locks.</li>
           </ul>
           <p>Ver <a href="#transacciones">§15</a>.</p>
@@ -1067,13 +1147,19 @@ flowchart LR
         </details>
         <details>
           <summary>Control de concurrencia (2PL / timestamps / optimista): caso supermercado en hora pico</summary>
+          <p><strong>Definiciones:</strong></p>
+          <ul class="study-list">
+            <li><strong>2PL (Two-Phase Locking):</strong> fase de crecimiento donde solo toma locks y fase de decrecimiento donde solo los libera, sin volver a tomar ninguno.</li>
+            <li><strong>Timestamps:</strong> cada transacción recibe un timestamp global y cada dato guarda el de su última lectura/escritura; si una transacción intenta un acceso «fuera de orden», aborta.</li>
+            <li><strong>Optimista:</strong> trabaja sin locks sobre una copia y valida al commitear; si otra transacción tocó los mismos datos, aborta y reintenta.</li>
+          </ul>
           <p>Inventario con <strong>alta contención</strong> (muchas transacciones sobre los mismos registros de stock):</p>
           <div class="table-wrap"><table>
             <thead><tr><th>Algoritmo</th><th>Ventaja</th><th>Desventaja en hora pico</th></tr></thead>
             <tbody>
               <tr><td><strong>2PL</strong></td><td>Toma los locks de los productos antes de vender → garantiza consistencia del stock.</td><td>Puede haber <em>deadlocks</em> entre vendedores que quieren los mismos productos.</td></tr>
               <tr><td><strong>Timestamps</strong></td><td>Sin locks → sin deadlocks.</td><td>Muchos <em>aborts/retries</em> y posible starvation con alta contención.</td></tr>
-              <tr><td><strong>Optimista</strong></td><td>Excelente con pocos conflictos y muchas lecturas.</td><td>En hora pico → <em>muchísimos aborts</em>, se desperdicia trabajo, baja performance.</td></tr>
+              <tr><td><strong>Optimista</strong></td><td>Excelente con pocos conflictos y muchas lecturas.</td><td>Con alta contención la validación falla seguido, se abortan y reintentan muchas transacciones, se <em>desperdicia todo el trabajo ya hecho</em>.</td></tr>
             </tbody>
           </table></div>
           <p><strong>Recomendación:</strong> <strong>2PL con prevención de deadlock</strong> (wait-die o wound-wait). Con mucha contención es preferible bloquear y esperar antes que abortar una y otra vez; minimiza aborts y mantiene el stock consistente. (Optimista convendría en un catálogo con muchas lecturas y pocas escrituras; timestamps, en sistemas distribuidos donde los locks son costosos.) Ver <a href="#transacciones">§15</a>.</p>
@@ -1085,23 +1171,33 @@ flowchart LR
           <p>Para que la venta sea <strong>atómica y sin sobreventa</strong> se usa <strong>Commit en dos fases</strong> entre los servicios críticos. <strong>Coordinador:</strong> el Sistema (habla con el cliente). <strong>Participantes:</strong> Inventario de butacas (estados: disponible/reservado/vendido) y Pago. Cada uno ejecuta una transacción local ACID en su propia BD.</p>
           <figure class="diagram">
             <div class="mermaid">
-sequenceDiagram
-    participant S as Sistema (coordinador)
-    participant I as Inventario
-    participant P as Pago
-    Note over S,P: el cliente elige asiento → Inventario lo reserva con TTL
-    Note over S,P: Fase PREPARE
-    S->>I: PREPARE(asientos)
-    I-->>S: VOTE_COMMIT (siguen reservados y sin expirar)
-    S->>P: PREPARE(tarjeta, monto)
-    P-->>S: VOTE_COMMIT (autorizado)
-    Note over S,P: Fase COMMIT
-    S->>I: COMMIT → butacas VENDIDAS
-    S->>P: COMMIT → captura de fondos
-    S->>S: genera y envía el PDF de entradas
+        sequenceDiagram
+            participant S as Sistema coordinador
+            participant I as Inventario
+            participant P as Pago
+            Note over S,P: el cliente elige asiento → Inventario lo reserva con TTL
+            Note over S,P: Fase PREPARE
+            S->>I: PREPARE(asientos)
+            I->>I: escribe READY en log
+            I-->>S: VOTE_COMMIT (siguen reservados y sin expirar)
+            S->>P: PREPARE(tarjeta, monto)
+            P->>P: escribe READY en log
+            P-->>S: VOTE_COMMIT (autorizado)
+            Note over S,P: Fase COMMIT
+            S->>S: registra decisión en log
+            S->>I: COMMIT → butacas VENDIDAS
+            S->>P: COMMIT → captura de fondos
+            S->>S: genera y envía el PDF de entradas
             </div>
-            <figcaption><strong>Éxito:</strong> ambos votan COMMIT y el cliente recibe sus entradas. <strong>Falla (tarjeta rechazada):</strong> Pago vota ABORT → el Inventario libera la butaca (vuelve a disponible).</figcaption>
+            <figcaption><strong>Éxito:</strong> ambos votan COMMIT y el cliente recibe sus entradas. <strong>Falla (tarjeta rechazada):</strong> Pago vota ABORT → el Inventario libera la butaca (vuelve a disponible). <strong>Falla del coordinador:</strong> si el coordinador cae entre recopilar votos y enviar la decisión, los participantes que votaron READY quedan <em>in-doubt</em> — bloqueados sin poder decidir por su cuenta (no conocen el voto de los demás), reteniendo la butaca hasta que el coordinador se recupere, lea su log y reenvíe la decisión.</figcaption>
           </figure>
+          <ul class="study-list">
+            <li><strong>Éxito:</strong> Ambos participantes votan COMMIT en la fase PREPARE (escriben READY en su log local), el coordinador registra su decisión en su log y luego ordena COMMIT. El cliente recibe sus entradas.</li>
+            <li><strong>Rechazo de tarjeta:</strong> Pago vota ABORT en la fase PREPARE, el coordinador decide ABORT global, e Inventario libera la butaca (vuelve a disponible para otros compradores).</li>
+            <li><strong>Caída del coordinador (in-doubt):</strong> Si el coordinador cae entre haber recopilado todos los votos READY y enviar la decisión COMMIT, los participantes quedan <strong>bloqueados sin decidir</strong> — no pueden commitear solos porque no conocen si el otro votó ABORT, ni abortar porque el coordinador no lo autorizó. Retienen la butaca (lock) esperando a que el coordinador se recupere, lea su log de «votos recibidos» y reenvíe la decisión COMMIT o ABORT. Este es el talón de Aquiles del 2PC: sacrifica <em>liveness</em> (disponibilidad) por <em>safety</em> (nunca deja el sistema inconsistente). Es lo que intenta evitar el 3PC.</li>
+          </ul>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> 2PC no es puro safety. Garantiza que todos commitean o todos abortan (atomicidad), pero puede quedar <em>bloqueado</em> (in-doubt) si el coordinador falla en la ventana crítica. La recuperación depende de que el coordinador vuelva en línea.</div>
+          <p><a href="#transacciones">§15</a></p>
         </details>
         <details>
           <summary>Pseudocódigo Rust (actores): resultado parcial de una elección en tiempo real</summary>
@@ -1152,7 +1248,17 @@ impl Handler<AgregarVotos> for ContadorActor {
         </details>
         <details>
           <summary>[Parcial] Diseñar con actores: el restaurante de San Telmo</summary>
-          <p>Cliente, Mozo, Cocinero y Depósito (acceso exclusivo de a uno). Estados y mensajes en la tabla de <a href="#actores">§9</a>. El Depósito serializa el acceso de a uno (como un mutex/actor); los cocineros notifican <code>PlatoListo</code> a los mozos.</p>
+          <p>Cliente hace un pedido al Mozo, el Mozo se lo pasa al Cocinero, y el Cocinero pide insumos al Depósito. El Depósito es el recurso de acceso exclusivo (de a uno); los Cocineros notifican <code>PlatoListo</code> a los Mozos cuando terminan.</p>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Actor</th><th>Estado interno</th><th>Mensajes que recibe / envía</th></tr></thead>
+            <tbody>
+              <tr><td>Cliente</td><td>mesa, pedido, si ya pagó</td><td>recibe <code>Atendido</code>, <code>PlatoListo</code>; envía <code>Pedir</code>, <code>PedirCuenta</code></td></tr>
+              <tr><td>Mozo</td><td>disponible/ocupado, mesas asignadas</td><td>recibe <code>Pedir</code>, <code>PlatoListo</code>, <code>PedirCuenta</code>; envía <code>NuevoPedido</code> a Cocina, <code>Atendido</code>/entrega al Cliente</td></tr>
+              <tr><td>Cocinero</td><td>pedido en preparación</td><td>recibe <code>NuevoPedido</code>; pide acceso al Depósito; al terminar envía <code>PlatoListo</code> al Mozo</td></tr>
+              <tr><td>Depósito</td><td>ocupado/libre (acceso exclusivo)</td><td>recibe <code>TomarIngredientes</code>/<code>Liberar</code> (serializa el acceso de a uno)</td></tr>
+            </tbody>
+          </table></div>
+          <p><strong>Clave:</strong> el Depósito es un actor que procesa un mensaje a la vez → automáticamente excluye (mutex por diseño). Los Cocineros no hacen busy-wait esperando: encolan su pedido de insumos en la mailbox del Depósito y se les avisa cuando corresponde. Nadie bloquea: todo es pasaje de mensajes.</p>
         </details>
         <details>
           <summary>[Parcial] Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio</summary>
@@ -1225,6 +1331,15 @@ let promedio = *total.lock().unwrap() / 100; // tiempo promedio</pre>
             <li><strong>Solución:</strong> un <strong>actor por restaurante</strong> (o por mesa) que <em>serializa</em> las reservas (procesa un mensaje a la vez → sin race): al reservar marca la mesa <code>reservada</code> con un <strong>TTL</strong> y se auto-envía un <code>Timeout</code>; si vence antes de la confirmación, libera la mesa. Alternativa transaccional: 2PL/2PC sobre el registro de la mesa.</li>
             <li><strong>Casos:</strong> (1) dos por la última mesa → el actor atiende una y a la otra le responde «no disponible». (2) expira el timeout → la mesa vuelve a <em>libre</em>. (3) cae el servidor de locks → sin él nadie puede reservar; se mitiga con réplica/reelección de líder o reconstruyendo el estado desde un log.</li>
           </ul>
+          <div class="callout warning">
+            <p><strong>Usabilidad y diferenciación de operaciones:</strong></p>
+            <ul class="study-list">
+              <li><strong>No sostener el lock mientras se hacen operaciones lentas:</strong> si el actor mantiene el lock de la mesa durante la confirmación (que tarda hasta 5 minutos), los demás usuarios quedan esperando indefinidamente → la usabilidad se cae. Patrón correcto: <em>tomar el lock, reservar rápido con timeout, liberar el lock</em>, y recién después validar/cobrar fuera de la sección crítica.</li>
+              <li><strong>Diferenciar lecturas de escrituras:</strong> consultar qué mesas están libres es una <em>lectura</em> (muchos usuarios concurrentes); <em>reservar</em> es una <em>escritura</em> (serializada). Usar <code>RwLock</code> o un esquema equivalente, no un mutex único para todo.</li>
+              <li><strong>SPOF no se resuelve solo nombrarlo:</strong> hay que atacarlo con réplica del actor/servicio de mesas (varios actores del mismo restaurante con estado sincronizado), reelección de líder entre réplicas, o reconstrucción del estado desde un log persistente ante caída.</li>
+            </ul>
+          </div>
+          <p><a href="#transacciones">§15</a></p>
         </details>
       </section>
 
