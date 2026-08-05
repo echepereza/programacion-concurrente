@@ -4147,50 +4147,65 @@ flowchart LR
         </details>
         <details>
           <summary>Pseudocódigo Rust (actores): resultado parcial de una elección en tiempo real</summary>
-          <p>Las mesas emiten votos concurrentemente; un contador central agrega los parciales sin locks (cada actor procesa un mensaje a la vez).</p>
+          <p>Las mesas emiten votos concurrentemente y un <strong>contador central</strong> agrega los parciales. Como cada actor procesa <strong>un mensaje a la vez</strong>, el conteo se serializa por diseño: no hacen falta locks ni hay races sobre el total.</p>
           <pre class="code" data-lang="rust"><code>use actix::prelude::*;
-use std::collections::HashMap;
+        use std::collections::HashMap;
 
-#[derive(Message)] #[rtype(result = "()")]
-struct EmitirVoto { partido: String }
+        #[derive(Message)] #[rtype(result = "()")]
+        struct EmitirVoto { partido: String }
 
-#[derive(Message)] #[rtype(result = "()")]
-struct ContarBoletas { contador: Addr&lt;ContadorActor&gt; }
+        #[derive(Message)] #[rtype(result = "()")]
+        struct ContarBoletas { contador: Addr&lt;ContadorActor&gt; }
 
-#[derive(Message)] #[rtype(result = "()")]
-struct AgregarVotos { partido: String, votos: usize }
+        #[derive(Message)] #[rtype(result = "()")]
+        struct AgregarVotos { partido: String, votos: usize }
 
-// Una mesa acumula sus boletas y, cuando se lo piden, manda su conteo parcial.
-struct MesaActor { boletas: Vec&lt;String&gt; }
-impl Actor for MesaActor { type Context = Context&lt;Self&gt;; }
+        // Consulta EN TIEMPO REAL: devuelve el parcial acumulado hasta este instante.
+        #[derive(Message)] #[rtype(result = "HashMap&lt;String, usize&gt;")]
+        struct ConsultarParcial;
 
-impl Handler&lt;EmitirVoto&gt; for MesaActor {
-    type Result = ();
-    fn handle(&amp;mut self, msg: EmitirVoto, _: &amp;mut Context&lt;Self&gt;) {
-        self.boletas.push(msg.partido);            // voto entrante (concurrente)
-    }
-}
-impl Handler&lt;ContarBoletas&gt; for MesaActor {
-    type Result = ();
-    fn handle(&amp;mut self, msg: ContarBoletas, _: &amp;mut Context&lt;Self&gt;) {
+        // Una mesa acumula sus boletas y, cuando se lo piden, manda su conteo parcial.
+        struct MesaActor { boletas: Vec&lt;String&gt; }
+        impl Actor for MesaActor { type Context = Context&lt;Self&gt;; }
+
+        impl Handler&lt;EmitirVoto&gt; for MesaActor {
+            type Result = ();
+            fn handle(&amp;mut self, msg: EmitirVoto, _: &amp;mut Context&lt;Self&gt;) {
+        self.boletas.push(msg.partido);              // voto entrante (concurrente)
+            }
+        }
+
+        impl Handler&lt;ContarBoletas&gt; for MesaActor {
+            type Result = ();
+            fn handle(&amp;mut self, msg: ContarBoletas, _: &amp;mut Context&lt;Self&gt;) {
         let mut parcial: HashMap&lt;String, usize&gt; = HashMap::new();
         for p in &amp;self.boletas { *parcial.entry(p.clone()).or_insert(0) += 1; }
         for (partido, votos) in parcial {
-            msg.contador.do_send(AgregarVotos { partido, votos });
+            msg.contador.do_send(AgregarVotos { partido, votos });  // fire and forget
         }
-    }
-}
+            }
+        }
 
-// El contador central agrega los parciales de todas las mesas (estado privado).
-struct ContadorActor { votos: HashMap&lt;String, usize&gt; }
-impl Actor for ContadorActor { type Context = Context&lt;Self&gt;; }
+        // El contador central agrega los parciales de todas las mesas (estado privado).
+        struct ContadorActor { votos: HashMap&lt;String, usize&gt; }
+        impl Actor for ContadorActor { type Context = Context&lt;Self&gt;; }
 
-impl Handler&lt;AgregarVotos&gt; for ContadorActor {
-    type Result = ();
-    fn handle(&amp;mut self, msg: AgregarVotos, _: &amp;mut Context&lt;Self&gt;) {
-        *self.votos.entry(msg.partido).or_insert(0) += msg.votos;  // sin locks
-    }
-}</code></pre>
+        impl Handler&lt;AgregarVotos&gt; for ContadorActor {
+            type Result = ();
+            fn handle(&amp;mut self, msg: AgregarVotos, _: &amp;mut Context&lt;Self&gt;) {
+        *self.votos.entry(msg.partido).or_insert(0) += msg.votos;   // sin locks
+            }
+        }
+
+        impl Handler&lt;ConsultarParcial&gt; for ContadorActor {
+            type Result = MessageResult&lt;ConsultarParcial&gt;;
+            fn handle(&amp;mut self, _: ConsultarParcial, _: &amp;mut Context&lt;Self&gt;) -&gt; Self::Result {
+        MessageResult(self.votos.clone())            // foto consistente del momento
+            }
+        }
+
+        // Consumidor: let parcial = contador.send(ConsultarParcial).await.unwrap();</code></pre>
+          <p><strong>Clave:</strong> los votos se mandan con <code>do_send</code> (la mesa no se bloquea esperando al contador), mientras que la consulta usa <code>send().await</code> porque necesita respuesta. El parcial que devuelve es una <strong>foto consistente</strong>: se arma dentro del handler y, mientras corre, ningún otro mensaje está tocando <code>votos</code>. Ver <a href="#actores">§9</a>.</p>
         </details>
         <details>
           <summary>[Parcial] Diseñar con actores: el restaurante de San Telmo</summary>
@@ -4208,30 +4223,45 @@ impl Handler&lt;AgregarVotos&gt; for ContadorActor {
         </details>
         <details>
           <summary>[Parcial] Pseudocódigo: descargar 100 links con máximo N threads y medir el promedio</summary>
+          <p>La restricción es <strong>máximo N threads</strong>, así que se crean <strong>exactamente N</strong> workers que van sacando URLs de una cola compartida hasta agotarla (patrón <em>pool</em>). No se lanza un thread por link.</p>
           <pre class="code" data-lang="rust"><code>use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+        use std::time::{Duration, Instant};
 
-let links: Vec&lt;String&gt; = /* 100 URLs */ vec![];
-let n = 8;                                   // máximo de threads activos
-let sem = Arc::new(Semaphore::new(n));       // limita la concurrencia
-let total = Arc::new(Mutex::new(Duration::ZERO));
-let mut handles = vec![];
+        let links: Vec&lt;String&gt; = /* 100 URLs */ vec![];
+        let cantidad = links.len();
+        let n = 8;                                       // máximo de threads activos
 
-for url in links {
-    let sem = Arc::clone(&amp;sem);
-    let total = Arc::clone(&amp;total);
-    handles.push(std::thread::spawn(move || {
-        let _permit = sem.access();          // no más de N a la vez (RAII)
+        let cola  = Arc::new(Mutex::new(links));          // cola de trabajo compartida
+        let total = Arc::new(Mutex::new(Duration::ZERO)); // suma de los tiempos
+        let mut handles = vec![];
+
+        for _ in 0..n {                                   // se crean N threads, no 100
+            let cola  = Arc::clone(&amp;cola);
+            let total = Arc::clone(&amp;total);
+            handles.push(std::thread::spawn(move || loop {
+        // SC corta #1: sacar la próxima URL y soltar el lock enseguida
+        let url = {
+            let mut q = cola.lock().unwrap();
+            match q.pop() {
+                Some(u) =&gt; u,
+                None =&gt; break,                    // no queda trabajo: el worker termina
+            }
+        };
+
         let t0 = Instant::now();
-        // simular espera de red
-        std::thread::sleep(Duration::from_millis(rand_ms()));
+        descargar(&amp;url);                          // el I/O va FUERA del lock
         let elapsed = t0.elapsed();
+
+        // SC corta #2: acumular el tiempo medido
         *total.lock().unwrap() += elapsed;
-    }));
-}
-for h in handles { h.join().unwrap(); }
-let promedio = *total.lock().unwrap() / 100; // tiempo promedio</code></pre>
-          <p>El <strong>semáforo</strong> acota los threads activos (baja latencia); el <code>Arc&lt;Mutex&gt;</code> acumula los tiempos. Como es I/O simulada, una variante idiomática sería <strong>async</strong> con un límite de concurrencia.</p>
+            }));
+        }
+
+        for h in handles { h.join().unwrap(); }           // esperar a los N workers
+
+        let promedio = *total.lock().unwrap() / cantidad as u32;</code></pre>
+          <p>Como es trabajo <strong>I/O-bound</strong>, la variante idiomática sería <strong>async</strong> con un límite de concurrencia (un semáforo de N permisos sobre tareas, en vez de N threads del SO).</p>
+          <div class="callout warning"><strong>Para no perder puntos:</strong> las dos secciones críticas son <strong>cortas</strong> —sacar la URL y sumar el tiempo— y la descarga queda <em>fuera</em> del lock. Si se descargara con el lock tomado, los N workers se serializarían y el paralelismo sería cero. Y ojo con la otra trampa: lanzar los 100 threads y frenarlos con un semáforo <em>no</em> cumple «máximo N threads», porque los 100 existen igual (solo que bloqueados). Ver <a href="#forkjoin">§5</a>.</div>
         </details>
         <details>
           <summary>[Parcial] Diseñar con actores: patio de comidas y juegos con notificaciones</summary>
