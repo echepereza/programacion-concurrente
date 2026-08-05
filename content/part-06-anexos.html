@@ -910,26 +910,40 @@ flowchart LR
         <h3>Ej 3 — Redes y sockets</h3>
         <details>
           <summary>Las 7 capas del modelo OSI</summary>
+          <p>La idea del modelo OSI es dividir el problema de «comunicar dos aplicaciones» en capas, cada una con responsabilidades acotadas y bien definidas. Cada capa usa los servicios de la de abajo y ofrece servicios a la de arriba. Esta separación permite cambiar una capa (mismo objetivo, distinto procedimiento) sin romper el resto del sistema, favoreciendo <strong>modularidad</strong> y <strong>portabilidad</strong>.</p>
           <div class="table-wrap"><table>
-            <thead><tr><th>#</th><th>Capa</th><th>Objetivo</th><th>Ejemplos</th></tr></thead>
+            <thead><tr><th>#</th><th>Capa</th><th>Objetivo</th><th>Capacidades</th></tr></thead>
             <tbody>
-              <tr><td>1</td><td>Física</td><td>Transmitir bits crudos por el medio</td><td>medio, ancho de banda</td></tr>
-              <tr><td>2</td><td>Enlace de datos</td><td>Mover tramas entre nodos vecinos, detectar errores</td><td>MAC, control de flujo</td></tr>
-              <tr><td>3</td><td>Red</td><td>Enrutar paquetes de origen a destino entre redes</td><td>IP, routing</td></tr>
-              <tr><td>4</td><td>Transporte</td><td>Comunicación extremo-a-extremo, multiplexar apps</td><td>TCP/UDP, control de flujo</td></tr>
-              <tr><td>5</td><td>Sesión</td><td>Establecer, mantener y cerrar sesiones de diálogo</td><td>control de diálogo, sincronización</td></tr>
-              <tr><td>6</td><td>Presentación</td><td>Negociar la sintaxis de los datos, (des)cifrado, compresión</td><td>ASCII/JPEG, serialización</td></tr>
-              <tr><td>7</td><td>Aplicación</td><td>Interfaz con el software de usuario, servicios de alto nivel</td><td>HTTP, DNS</td></tr>
+              <tr><td>1</td><td>Física</td><td>Transmitir bits crudos por el medio</td><td>Define voltajes, conectores, frecuencias y tipos de señales.</td></tr>
+              <tr><td>2</td><td>Enlace de datos</td><td>Mover tramas entre nodos vecinos, detectar errores</td><td>Organiza los bits en tramas, detección de errores (CRC), control de acceso al medio (MAC) y direccionamiento físico.</td></tr>
+              <tr><td>3</td><td>Red</td><td>Enrutar paquetes de origen a destino entre redes</td><td>Direccionamiento lógico (IP), enrutamiento, fragmentación y decisiones de ruta.</td></tr>
+              <tr><td>4</td><td>Transporte</td><td>Comunicación extremo-a-extremo, multiplexar aplicaciones</td><td>Segmentación y reensamblado, control de flujo, manejo de errores, entrega ordenada y confiable (TCP) o no confiable pero liviana (UDP).</td></tr>
+              <tr><td>5</td><td>Sesión</td><td>Establecer, mantener y cerrar sesiones de diálogo</td><td>Inicio, mantenimiento y finalización de sesiones, checkpoints, recuperación.</td></tr>
+              <tr><td>6</td><td>Presentación</td><td>Negociar la sintaxis de los datos, (des)cifrado, compresión</td><td>Conversión de formatos, compresión, encriptación, negociación de codificaciones.</td></tr>
+              <tr><td>7</td><td>Aplicación</td><td>Interfaz con el software de usuario, servicios de alto nivel</td><td>Protocolos como HTTP, FTP, SMTP; interfaz directa entre el software de usuario y la red.</td></tr>
             </tbody>
           </table></div>
+          <p>Ver <a href="#redes">§20</a>.</p>
         </details>
         <details>
           <summary>¿Qué son los sockets y qué modelo de concurrencia implementan?</summary>
-          <p>Interfaz para comunicar dos procesos (misma o distinta máquina), base del modelo <strong>cliente-servidor</strong> (cliente activo inicia, servidor pasivo responde). Implementan <strong>pasaje de mensajes</strong>: cada extremo tiene su propio espacio de memoria y se sincroniza enviando/recibiendo por el stream; <strong>no hay memoria compartida</strong>. Ver <a href="#sockets">§18</a>.</p>
+          <p>Un <strong>socket</strong> es una abstracción que da el sistema operativo para enviar/recibir datos entre procesos (misma o distinta máquina). Se identifica por la <strong>quíntupla</strong>: (IP origen, puerto origen, IP destino, puerto destino, protocolo). Es la base del modelo <strong>cliente-servidor</strong>: el cliente inicia la interacción (proceso activo), el servidor responde (pasivo).</p>
+          <p><strong>Tipos de sockets:</strong></p>
+          <ul class="study-list">
+            <li><strong>Stream</strong> (TCP): flujo confiable de bytes, orientado a conexión, garantiza entrega ordenada.</li>
+            <li><strong>Datagram</strong> (UDP): mensajes sueltos, sin conexión, sin garantías de entrega ni orden.</li>
+          </ul>
+          <p><strong>Modelo de comunicación:</strong> implementan <strong>pasaje de mensajes</strong> — cada extremo tiene su propio espacio de memoria y se sincronizan enviando/recibiendo por el stream; <strong>no hay memoria compartida</strong>.</p>
+          <div class="callout warning">
+            <strong>Para no perder puntos:</strong> Un socket NO impone ningún modelo de concurrencia. La interfaz es de comunicación; quien elige el modelo es la <strong>implementación del servidor</strong> — las opciones típicas (estudiadas en la materia) son <strong>thread-per-connection</strong>, <strong>thread pool</strong> o <strong>I/O asincrónico con event loop</strong>.
+          </div>
+          <p><a href="#sockets">§18</a></p>
         </details>
         <details>
           <summary>¿Qué socket/servicio usarías para una app de streaming de películas?</summary>
-          <p>Para video <strong>en vivo</strong> conviene <strong>UDP</strong> (la pérdida de paquetes se compensa con menor latencia). Para películas <strong>on-demand</strong>, <strong>TCP</strong>: la pérdida degradaría la calidad, así que se prioriza confiabilidad y orden por sobre velocidad. Conclusión: para «películas» (on-demand) → <strong>TCP</strong>.</p>
+          <p>Un <strong>socket</strong> es una interfaz que permite la comunicación entre dos procesos, en la misma máquina o en máquinas distintas.</p>
+          <p>Para video <strong>en vivo</strong> conviene <strong>UDP</strong>: retransmitir un paquete que ya quedó viejo no sirve de nada —el momento ya pasó—, así que se prefiere perder algún paquete antes que acumular latencia. Para películas <strong>on-demand</strong>, <strong>TCP</strong>: hay un <strong>buffer de reproducción</strong> que absorbe la latencia de las retransmisiones, así que se puede pagar ese costo a cambio de entrega <strong>confiable y ordenada</strong>; perder paquetes degradaría la imagen sin necesidad.</p>
+          <p><strong>Conclusión:</strong> para una app de streaming de <strong>películas</strong> → <strong>TCP</strong>, priorizando confiabilidad por sobre velocidad. El eje de la decisión es <strong>latencia vs confiabilidad</strong>. <a href="#sockets">§18</a></p>
         </details>
         <details>
           <summary>Comparar sockets de Unix con channels de Rust</summary>
@@ -940,29 +954,40 @@ flowchart LR
               <tr><td>Datos</td><td>Flujo de bytes (TCP) o datagramas sin tipo (UDP)</td><td>Mensajes <strong>tipados</strong>, sin serializar</td></tr>
               <tr><td>Orden / entrega</td><td>TCP: ordenado y confiable; UDP: sin garantías</td><td>FIFO estricto, entrega garantizada mientras el canal esté abierto</td></tr>
               <tr><td>Dirección</td><td>TCP es bidireccional</td><td>Unidireccional</td></tr>
+              <tr><td>Sincronía</td><td>Sincrónicos o asincrónicos</td><td>Sincrónicos o asincrónicos</td></tr>
               <tr><td>Fallas</td><td>Fallos de red; hay que manejar timeouts/keepalives</td><td>Cierre del canal → <code>Err</code>; sin fallos de red</td></tr>
-              <tr><td>Memoria / relojes</td><td>Espacios separados; relojes no sincronizados</td><td>Comparten la memoria del proceso</td></tr>
+              <tr><td>Memoria / relojes</td><td>Espacios de memoria independientes; relojes no sincronizados</td><td>Espacio de memoria compartido; reloj único del proceso</td></tr>
               <tr><td>Delimitación</td><td>Stream continuo: hace falta un protocolo para delimitar mensajes</td><td>Mensajes discretos</td></tr>
             </tbody>
           </table></div>
-          <p>Ambos pueden ser sincrónicos o asincrónicos.</p>
         </details>
 
         <details>
-          <summary>Modelo cliente-servidor: arquitecturas y tipos de servidor (con diagrama)</summary>
-          <p><strong>Arquitecturas:</strong> de <em>dos niveles</em> (cliente y servidor en contacto directo) y de <em>tres niveles</em> (un <strong>middleware</strong> entre ambos que aporta seguridad y balanceo de carga). <strong>Tipos de servidor:</strong> <em>iterativo</em> (atiende una petición a la vez) y <em>concurrente</em> (atiende varias a la vez). El <strong>cliente</strong> es activo (inicia); el <strong>servidor</strong> es pasivo (espera y responde).</p>
-          <figure class="diagram">
-            <div class="mermaid">
-sequenceDiagram
-    participant C as Cliente (activo)
-    participant S as Servidor (pasivo)
-    S->>S: bind + listen (espera)
-    C->>S: connect + request
-    S->>S: procesa (iterativo o concurrente)
-    S-->>C: response
-            </div>
-            <figcaption>Cliente-servidor: el servidor escucha y responde; si es concurrente, atiende varias conexiones a la vez (thread-per-connection, pool o async). Ver <a href="#sockets">§18</a>.</figcaption>
-          </figure>
+        <summary>Modelo cliente-servidor: arquitecturas y tipos de servidor (con diagrama)</summary>
+        <p><strong>Arquitecturas:</strong> de <em>dos niveles</em> (cliente y servidor en contacto directo) y de <em>tres niveles</em> (con un <strong>middleware</strong> entre ambos que aporta seguridad, balanceo de carga y desacopla al cliente de los servidores de atrás).</p>
+        <ul class="study-list">
+        <li><strong>Servidor iterativo:</strong> atiende una petición a la vez; las demás esperan en cola. Sirve para peticiones cortas y uniformes, pero se traba si una petición es lenta.</li>
+        <li><strong>Servidor concurrente:</strong> atiende varias peticiones a la vez. Tiene tres modelos:
+        <ul class="study-list">
+        <li><strong>Thread-per-connection:</strong> un hilo por cada conexión aceptada; simple, pero no escala a miles.</li>
+        <li><strong>Thread pool:</strong> un conjunto fijo de hilos que se reparten las conexiones; acota el consumo de recursos.</li>
+        <li><strong>I/O asincrónico con event loop:</strong> una o pocas threads atendiendo muchísimas conexiones que mayormente esperan; escala a decenas de miles.</li>
+        </ul>
+        </li>
+        </ul>
+        <p>El <strong>cliente</strong> es activo (inicia la comunicación); el <strong>servidor</strong> es pasivo (espera y responde).</p>
+        <figure class="diagram">
+        <div class="mermaid">
+        sequenceDiagram
+            participant C as Cliente activo
+            participant S as Servidor pasivo
+            S->>S: bind + listen (espera)
+            C->>S: connect + request
+            S->>S: procesa (iterativo o concurrente)
+            S-->>C: response
+        </div>
+        <figcaption>Cliente-servidor: el servidor escucha y responde. Ver <a href="#sockets">§18</a>.</figcaption>
+        </figure>
         </details>
 
         <h3>Ej 4 — Ambientes distribuidos</h3>
